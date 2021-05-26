@@ -34,7 +34,7 @@ def create_dummy(cnffile,target_dir,nfiles,maxvar=5000000, maxclauses=20000000):
 
         # vlist = [v for v in range(1,nvars+1)]
         # vneglist = [maxvar+v for v in range(1,nvars+1)]
-        # negclauselist = [2*maxvar+v for v in range(1,nvars+1)]
+        # negclauselist = list(range(1,nvars+1))
 
         # indices0 = vlist + vneglist
         # indices1 = negclauselist * 2
@@ -49,7 +49,7 @@ def create_dummy(cnffile,target_dir,nfiles,maxvar=5000000, maxclauses=20000000):
             c = f.readline().strip().split()
             totalnvc += len(c)-1
             indices0.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
-            indices1.extend([2*maxvar+nc]*(len(c)-1)) #clause index starts after pos and neg vars
+            indices1.extend([nc]*(len(c)-1))
 
         #values = [True] * (2*nvars + totalnvc)
         values = [True] * (totalnvc)
@@ -60,19 +60,20 @@ def create_dummy(cnffile,target_dir,nfiles,maxvar=5000000, maxclauses=20000000):
         step = int(totalnvc / nfiles)
 
         for i in range(nfiles-1):
-            smatrix = scipy.sparse.coo_matrix((np.asarray(values[i*step:(i+1)*step]),(np.asarray(indices0[i*step:(i+1)*step]),np.asarray(indices1[i*step:(i+1)*step]))),dtype=np.bool,shape=(maxvar+maxclauses, maxvar+maxclauses))
+            smatrix = scipy.sparse.coo_matrix((np.asarray(values[i*step:(i+1)*step]),(np.asarray(indices0[i*step:(i+1)*step]),np.asarray(indices1[i*step:(i+1)*step]))),dtype=np.bool,shape=(maxvar*2+1, maxclauses))
             mf = target_dir+"/"+noext+"_"+str(i)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
         last = step * (nfiles-1)
         if last < totalnvc:
-            smatrix = scipy.sparse.coo_matrix((np.asarray(values[last:]),(np.asarray(indices0[last:]),np.asarray(indices1[last:]))),dtype=np.bool,shape=(maxvar+maxclauses, maxvar+maxclauses))
+            smatrix = scipy.sparse.coo_matrix((np.asarray(values[last:]),(np.asarray(indices0[last:]),np.asarray(indices1[last:]))),dtype=np.bool,shape=(maxvar*2+1, maxclauses))
             mf = target_dir+"/"+noext+"_"+str(nfiles-1)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
 
         datafile = open(target_dir+"/"+noext+".graph","w")
-        datafile.write("1 "+str(maxvar)+" " +str(maxclauses))
+        datafile.write("1 "+str(maxvar*2+1)+" " +str(maxclauses)+"\n")
+        datafile.write("2")
         for fn in matrixfiles:
             datafile.write(" "+fn)
         datafile.close()
