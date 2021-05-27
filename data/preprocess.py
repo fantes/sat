@@ -7,8 +7,8 @@ import numpy as np
 
 def conv_vindex(v, maxvar):
     if v<0:
-        return -v+maxvar
-    return v
+        return -v+maxvar-1
+    return v-1
 
 
 def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
@@ -43,7 +43,7 @@ def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.coo_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,maxvar*2+1))
+            smatrix = scipy.sparse.coo_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,maxvar*2))
             mf = target_dir+"/"+noext+"_"+str(i)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
@@ -62,13 +62,13 @@ def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.coo_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-clauseidx,maxvar*2+1))
+            smatrix = scipy.sparse.coo_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-clauseidx,maxvar*2))
             mf = target_dir+"/"+noext+"_"+str(nfiles-1)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
 
         datafile = open(target_dir+"/"+noext+".graph","w")
-        datafile.write("1 "+str(maxvar*2+1)+" " +str(nclauses)+ " " + str(nvars) + "\n")
+        datafile.write("1 "+str(maxvar)+" " +str(nclauses)+ " " + str(nvars) + "\n")
         datafile.write("2")
         for fn in matrixfiles:
             datafile.write(" "+fn)

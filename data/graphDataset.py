@@ -3,10 +3,11 @@ import scipy.sparse
 import random
 import numpy as np
 import preprocess
+import time
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filename, permute = True, self_supervised = False, cachesize=100):
+    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100):
         self.fname = filename
         self.cachesize = cachesize
         self.cache = {}
@@ -16,9 +17,13 @@ class GraphDataset(torch.utils.data.Dataset):
         l = f.readline().strip().split()
         self.nlabels = int(l[0])
         self.maxvar = int(l[1])
-        self.nvar = int(l[2])
-        self.nclause = int(l[3])
-        self.permute = permute
+        self.nvar = int(l[3])
+        self.nclause = int(l[2])
+        self.permute_vars = permute_vars
+        self.permute_clauses = permute_clauses
+        self.neg_clauses = neg_clauses
+        if neg_clauses:
+            self.nclause = self.nclause+self.nvar
         ll = f.readline()
         while ll:
             l = ll.strip().split()
@@ -27,32 +32,43 @@ class GraphDataset(torch.utils.data.Dataset):
             self.data.append({'l':labels,'f':graphfiles})
             ll = f.readline()
 
+        if self.permute_vars:
+            self.varPermRows = list(range(self.maxvar*2))
+            self.varData = [True]*(self.maxvar*2)
+
+        if self.permute_clauses:
+            self.clausesPerRows = list(range(self.nclause))
+            self.varClause = [True]*self.nclause
+
+        if self.neg_clauses:
+            vlist = [v for v in range(0,self.nvar)]
+            vneglist = [self.maxvar+v for v in range(0,self.nvar)]
+            negclauselist = list(range(0,self.nvar))
+            varClause = [True] *2*self.nvar
+            self.negClauseMatrix = scipy.sparse.coo_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.maxvar*2),dtype=bool)
+
+
     def __len(self):
         return len(self.data)
 
-    def mpermute(ssm, labels):
-        varPermuted = np.random.permutation(list(range(self.maxvar*2+1)))
-        varPermRows = list(range(self.maxvar*2+1))
-        varData = [True]*(self.maxvar*2+1)
-        vperMatrix = scipy.sparse.coo_matrix((varData,(varPerRows,varPermuted)),shape=(maxvar,maxvar),dtype=bool)
-        varPermuted =  ssm * vperMatrix
+    def mpermute(self,ssm, labels,permute_vars=True, permute_clauses=True):
+        res = ssm
+        if permute_vars:
+            varPermuted = np.random.permutation(list(range(self.maxvar*2)))
+            vperMatrix = scipy.sparse.coo_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=bool)
+            res =  ssm * vperMatrix
 
-        clausesPermuted = np.random.permutation(list(range(self.maxclause)))
-        clausesPerRows = list(range(self.maxclause))
-        varClause = [True]*self.maxclause
-        clausePerMatrix = scipy.sparse.coo_matrix((varClause,(clausesPerRows,clausesPermuted)),shape=(mxclause,maxclause),dtype=bool)
-        clausesPermuted = clausePerMatrix *varPermuted
+
+        if permute_clauses:
+            clausesPermuted = np.random.permutation(list(range(self.nclause)))
+            clausePerMatrix = scipy.sparse.coo_matrix((self.varClause,(self.clausesPerRows,clausesPermuted)),shape=(self.nclause,self.nclause),dtype=bool)
+            res = clausePerMatrix *res
 
         # do not forget to permute labels, if relevant
-        return clausesPermuted, labels
+        return res, labels
 
     def addNegClauses(self,ssm):
-        vlist = [v for v in range(1,self.nvar+1)]
-        vneglist = [self.maxvar/2+v for v in range(1,self.nvar+1)]
-        negclauselist = list(range(0,self.nvar))
-        varClause = [True] *2*self.nvar
-        negClauseMatrix = scipy.sparse.coo_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.maxvar),dtype=bool)
-        return scipy.sparse.vstack([negClauseMatrix,ssm])
+        return scipy.sparse.vstack([self.negClauseMatrix,ssm])
 
 
     def __getitem__(self, idx):
@@ -72,10 +88,9 @@ class GraphDataset(torch.utils.data.Dataset):
         if len(self.cache) >= self.cachesize and self.cachesize> 0:
             del self.cache[random.choice(list(self.cache.keys()))]
         self.cache[idx] = {'labels':self.data[idx]['l'],'graph':ssm}
-        if self.permute:
-            return mpermute(ssm, self.data[idx]['l'])
-        else:
-            return ssm, self.data[idx]['l']
+        if self.neg_clauses:
+            ssm = self.addNegClauses(ssm)
+        return self.mpermute(ssm, self.data[idx]['l'],self.permute_vars, self.permute_clauses)
 
     def getitem(self,idx):
         return self.__getitem__(idx)
@@ -87,11 +102,20 @@ def getDataLoader(filename, batch_size, num_workers=10, cachesize=100):
 
 
 def main():
-    preprocess.preprocess('/data1/infantes/systerel/ex.cnf', './test', 2, maxvar=5)
-    tds = GraphDataset('./test/ex.graph', permute=False, self_supervised = False, cachesize=0)
+    start = time.process_time()
+    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 50)
+    end = time.process_time()
+    print("preprocess time: " + str(end-start))
+    start = time.process_time()
+    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = True, self_supervised = False, cachesize=0)
+    end = time.process_time()
+    print("init time: " + str(end-start))
+    start = time.process_time()
     ssm , labels = tds.getitem(0)
-    print(ssm.toarray())
-    print(tds.addNegClauses(ssm).toarray())
+    end = time.process_time()
+    print("get item time: " + str(end-start))
+
+    print(ssm.shape)
 
 if __name__ == '__main__':
     main()
