@@ -15,6 +15,7 @@ class GraphDataset(torch.utils.data.Dataset):
         self.self_supervised = self_supervised
         f = open(self.fname,'r')
         l = f.readline().strip().split()
+        print(l)
         self.nlabels = int(l[0])
         self.maxvar = int(l[1])
         self.nvar = int(l[3])
@@ -107,16 +108,29 @@ def main():
     end = time.process_time()
     print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = True, self_supervised = False, cachesize=0)
+    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = True,  self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
     ssm , labels = tds.getitem(0)
     end = time.process_time()
     print("get item time: " + str(end-start))
-
     print(ssm.shape)
-    print(ssm.nnz)
+
+    start = time.process_time()
+    varArity = np.asarray(ssm.sum(axis=0)).flatten()
+    end =  time.process_time()
+    print('varArity compute time: ' + str(end-start))
+
+    start = time.process_time()
+    clauseArity = np.asarray(ssm.sum(axis=1)).flatten()
+    end =  time.process_time()
+    print('clauseArity compute time: ' + str(end-start))
+
+
+
+
+
 
 if __name__ == '__main__':
     main()

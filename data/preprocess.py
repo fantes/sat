@@ -11,10 +11,11 @@ def conv_vindex(v, maxvar):
     return v-1
 
 
-def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
+def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
     basename = os.path.basename(cnffile)
     noext = os.path.splitext(basename)[0]
     matrixfiles = []
+
 
     with open(cnffile, 'r') as f:
 
@@ -26,6 +27,9 @@ def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
         nclauses = int(p[3])
         print('number of vars: ' + str(nvars))
         print('number of clauses: ' + str(nclauses))
+
+        #varArity = np.zeros(maxvar*2)
+        #clauseArity = np.zeros(nclauses)
 
         start = time.process_time()
 
@@ -40,7 +44,12 @@ def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
                 indices0.extend([nc+clauseidx]*(len(c)-1))
+                # clauseArity[nc+clauseidx] = len(c)-1
+                # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
+                # for v in vari:
+                #     varArity[v] = varArity[v] + 1
+
             values = [True] * (totalnvc)
             smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses,maxvar*2))
             mf = target_dir+"/"+noext+"_"+str(i)+".npz"
@@ -58,7 +67,11 @@ def preprocess(cnffile,target_dir,nfiles,maxvar=5000000):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
                 indices0.extend([nc+clauseidx]*(len(c)-1))
+                # clauseArity[nc+clauseidx] = len(c)-1
+                # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
+                # for v in vari:
+                #     varArity[v] = varArity[v] + 1
 
             values = [True] * (totalnvc)
             smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses,maxvar*2))
