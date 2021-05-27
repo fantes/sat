@@ -45,7 +45,7 @@ class GraphDataset(torch.utils.data.Dataset):
             vneglist = [self.maxvar+v for v in range(0,self.nvar)]
             negclauselist = list(range(0,self.nvar))
             varClause = [True] *2*self.nvar
-            self.negClauseMatrix = scipy.sparse.coo_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.maxvar*2),dtype=bool)
+            self.negClauseMatrix = scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.maxvar*2),dtype=bool)
 
 
     def __len(self):
@@ -55,13 +55,13 @@ class GraphDataset(torch.utils.data.Dataset):
         res = ssm
         if permute_vars:
             varPermuted = np.random.permutation(list(range(self.maxvar*2)))
-            vperMatrix = scipy.sparse.coo_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=bool)
+            vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=bool)
             res =  ssm * vperMatrix
 
 
         if permute_clauses:
             clausesPermuted = np.random.permutation(list(range(self.nclause)))
-            clausePerMatrix = scipy.sparse.coo_matrix((self.varClause,(self.clausesPerRows,clausesPermuted)),shape=(self.nclause,self.nclause),dtype=bool)
+            clausePerMatrix = scipy.sparse.csr_matrix((self.varClause,(self.clausesPerRows,clausesPermuted)),shape=(self.nclause,self.nclause),dtype=bool)
             res = clausePerMatrix *res
 
         # do not forget to permute labels, if relevant
@@ -83,7 +83,7 @@ class GraphDataset(torch.utils.data.Dataset):
             if ssm is None:
                 ssm = newssm
             else:
-                ssm = scipy.sparse.vstack([ssm,newssm])
+                ssm = ssm + newssm
 
         if len(self.cache) >= self.cachesize and self.cachesize> 0:
             del self.cache[random.choice(list(self.cache.keys()))]
@@ -103,7 +103,7 @@ def getDataLoader(filename, batch_size, num_workers=10, cachesize=100):
 
 def main():
     start = time.process_time()
-    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 50)
+    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 1)
     end = time.process_time()
     print("preprocess time: " + str(end-start))
     start = time.process_time()
@@ -116,6 +116,7 @@ def main():
     print("get item time: " + str(end-start))
 
     print(ssm.shape)
+    print(ssm.nnz)
 
 if __name__ == '__main__':
     main()
