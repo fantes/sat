@@ -42,8 +42,29 @@ class GraphCNNSAT(nn.Module):
         # will be block "diagonal" matrix of either ones (sum) or ones/numel (average)
         # depending on how h is flattened
 
-    def forward(self, (batch_graph,var_arities, clauses_arities)):
-        feat = var_arities.extend(clauses_arities)
+    def next_layer_eps(self, h, layer, graph):
+        # graph should be (maxvar+maxclause)*batch_size x(maxvar+maxclause)*batch_size
+        # h should be (maxvar+maxclause)*batch_size
+        pooled = torch.spmm(graph,h)
+        if self.neighbor_pooling_type == "average":
+            degree = torch.spmm(graph, torch.ones((graph.shape[0], 1)).to(self.device))
+            pooled = pooled/degree
+        pooled = pooled + (1+self.eps[layer])*h
+        pooled_rep = self.mlps[layer](pooled)
+        h = self.batch_norms[layer](pooled_rep)
+        h = F.relu(h)
+        return h
+
+    def forward(self, batch_graph, half = True):
+
+        nclause = batch_graph[0].shape[0]
+        nvar = batch_graph[0].shape[1]
+
+        clause_arities = [np.asarray(ssm.sum(axis=1)).flatten().resize(maxclause) for ssm in batch_graph]
+        var_arities = [np.asarray(ssm.sum(axis=0)).flatten().resize(maxvar) for ssm in batch_graph]
+
+        clause_feat = torch.cat(clause_arities, 0)
+        var_arities = torch.car(var_arities,0)
 
         if self.random:
             r = torch.randint(self.random, size=(len(feat), 1)).float() / self.random
@@ -72,3 +93,15 @@ class GraphCNNSAT(nn.Module):
             score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout, training = self.training)
 
         return score_over_layer
+
+def batch_graph_from_graphlist(graphs,maxclause, maxvar, half = False):
+    for g in graphs:
+        g.resize(maxclause,maxvar)
+    if half:
+        mats = graphs
+    else
+        mats = []
+        for g in graphs:
+            mats.extend([g,g.transpose()])
+    big_mat = scipy.sparse.block_diag(mats,format="coo", dtype= np.bool)
+    big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool))
