@@ -43,7 +43,7 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
             for nc in range(0, numClausesPerFile):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
-                indices0.extend([nc+clauseidx]*(len(c)-1))
+                indices0.extend([nc]*(len(c)-1))
                 # clauseArity[nc+clauseidx] = len(c)-1
                 # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
@@ -51,7 +51,7 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
                 #     varArity[v] = varArity[v] + 1
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses,maxvar*2))
+            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,maxvar*2))
             mf = target_dir+"/"+noext+"_"+str(i)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
@@ -66,7 +66,7 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
             for nc in range(0,nclauses-clauseidx):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
-                indices0.extend([nc+clauseidx]*(len(c)-1))
+                indices0.extend([nc]*(len(c)-1))
                 # clauseArity[nc+clauseidx] = len(c)-1
                 # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
                 indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
@@ -74,7 +74,7 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
                 #     varArity[v] = varArity[v] + 1
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses,maxvar*2))
+            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-clauseidx,maxvar*2))
             mf = target_dir+"/"+noext+"_"+str(nfiles-1)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)

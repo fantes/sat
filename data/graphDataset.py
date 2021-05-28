@@ -84,7 +84,7 @@ class GraphDataset(torch.utils.data.Dataset):
             if ssm is None:
                 ssm = newssm
             else:
-                ssm = ssm + newssm
+                ssm = scipy.sparse.vstack([ssm,newssm])
 
         if len(self.cache) >= self.cachesize and self.cachesize> 0:
             del self.cache[random.choice(list(self.cache.keys()))]
@@ -104,11 +104,11 @@ def getDataLoader(filename, batch_size, num_workers=10, cachesize=100):
 
 def main():
     start = time.process_time()
-    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 1)
+    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 10)
     end = time.process_time()
     print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = True,  self_supervised = False, cachesize=0)
+    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = False,  self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
