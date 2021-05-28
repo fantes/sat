@@ -17,9 +17,8 @@ class GraphDataset(torch.utils.data.Dataset):
         l = f.readline().strip().split()
         print(l)
         self.nlabels = int(l[0])
-        self.maxvar = int(l[1])
-        self.nvar = int(l[3])
-        self.nclause = int(l[2])
+        self.nclause = int(l[1])
+        self.nvar = int(l[2])
         self.permute_vars = permute_vars
         self.permute_clauses = permute_clauses
         self.neg_clauses = neg_clauses
@@ -34,8 +33,8 @@ class GraphDataset(torch.utils.data.Dataset):
             ll = f.readline()
 
         if self.permute_vars:
-            self.varPermRows = list(range(self.maxvar*2))
-            self.varData = [True]*(self.maxvar*2)
+            self.varPermRows = list(range(self.nvar*2))
+            self.varData = [True]*(self.nvar*2)
 
         if self.permute_clauses:
             self.clausesPerRows = list(range(self.nclause))
@@ -43,10 +42,10 @@ class GraphDataset(torch.utils.data.Dataset):
 
         if self.neg_clauses:
             vlist = [v for v in range(0,self.nvar)]
-            vneglist = [self.maxvar+v for v in range(0,self.nvar)]
+            vneglist = [self.nvar+v for v in range(0,self.nvar)]
             negclauselist = list(range(0,self.nvar))
             varClause = [True] *2*self.nvar
-            self.negClauseMatrix = scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.maxvar*2),dtype=bool)
+            self.negClauseMatrix = scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.nvar*2),dtype=bool)
 
 
     def __len(self):
@@ -55,8 +54,8 @@ class GraphDataset(torch.utils.data.Dataset):
     def mpermute(self,ssm, labels,permute_vars=True, permute_clauses=True):
         res = ssm
         if permute_vars:
-            varPermuted = np.random.permutation(list(range(self.maxvar*2)))
-            vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=bool)
+            varPermuted = np.random.permutation(list(range(self.nvar*2)))
+            vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar*2,self.nvar*2),dtype=bool)
             res =  ssm * vperMatrix
 
 
@@ -103,10 +102,10 @@ def getDataLoader(filename, batch_size, num_workers=10, cachesize=100):
 
 
 def main():
-    start = time.process_time()
-    preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 10)
-    end = time.process_time()
-    print("preprocess time: " + str(end-start))
+    # start = time.process_time()
+    # preprocess.preprocess('/data1/infantes/systerel/T102.2.1.cnf', './test', 10)
+    # end = time.process_time()
+    # print("preprocess time: " + str(end-start))
     start = time.process_time()
     tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = False,  self_supervised = False, cachesize=0)
     end = time.process_time()

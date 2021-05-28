@@ -5,13 +5,13 @@ import os
 import scipy.sparse
 import numpy as np
 
-def conv_vindex(v, maxvar):
+def conv_vindex(v, nvar):
     if v<0:
-        return -v+maxvar-1
+        return -v+nvar-1
     return v-1
 
 
-def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
+def preprocess(cnffile,target_dir,nfiles):
     basename = os.path.basename(cnffile)
     noext = os.path.splitext(basename)[0]
     matrixfiles = []
@@ -28,9 +28,6 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
         print('number of vars: ' + str(nvars))
         print('number of clauses: ' + str(nclauses))
 
-        #varArity = np.zeros(maxvar*2)
-        #clauseArity = np.zeros(nclauses)
-
         start = time.process_time()
 
         clauseidx = 0
@@ -44,14 +41,10 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
                 indices0.extend([nc]*(len(c)-1))
-                # clauseArity[nc+clauseidx] = len(c)-1
-                # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
-                indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
-                # for v in vari:
-                #     varArity[v] = varArity[v] + 1
+                indices1.extend([conv_vindex(int(v),nvars) for v in c[:-1]])
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,maxvar*2))
+            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,nvars*2))
             mf = target_dir+"/"+noext+"_"+str(i)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
@@ -67,20 +60,16 @@ def preprocess(cnffile,target_dir,nfiles, maxvar=5000000):
                 c = f.readline().strip().split()
                 totalnvc += len(c)-1
                 indices0.extend([nc]*(len(c)-1))
-                # clauseArity[nc+clauseidx] = len(c)-1
-                # vari = [conv_vindex(int(v),maxvar) for v in c[:-1]]
-                indices1.extend([conv_vindex(int(v),maxvar) for v in c[:-1]])
-                # for v in vari:
-                #     varArity[v] = varArity[v] + 1
+                indices1.extend([conv_vindex(int(v),nvars) for v in c[:-1]])
 
             values = [True] * (totalnvc)
-            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-clauseidx,maxvar*2))
+            smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-clauseidx,nvars*2))
             mf = target_dir+"/"+noext+"_"+str(nfiles-1)+".npz"
             matrixfiles.append(mf)
             scipy.sparse.save_npz(mf, smatrix)
 
         datafile = open(target_dir+"/"+noext+".graph","w")
-        datafile.write("1 "+str(maxvar)+" " +str(nclauses)+ " " + str(nvars) + "\n")
+        datafile.write("1 " +str(nclauses)+ " " + str(nvars) + "\n")
         datafile.write("2")
         for fn in matrixfiles:
             datafile.write(" "+fn)
