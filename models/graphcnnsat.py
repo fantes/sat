@@ -8,7 +8,7 @@ from mlp import MLP
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=5, num_mlp_layers=2, input_dim, hidden_dim=64, output_dim, final_dropout=0.5, random = True, device):
+    def __init__(self, num_layers=5, num_mlp_layers=2, input_dim, hidden_dim=64, output_dim, final_dropout=0.5, random = True, maxclause = 10000, maxvar = 10000, half_compute = True, var_classification = True, clause_classification = False, device):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -17,6 +17,9 @@ class GraphCNNSAT(nn.Module):
         self.num_layers = num_layers
         self.random = random
 
+        self.maxclause = maxclause
+        self.maxvar = maxvar
+        self.half_compute = half_compute
 
         self.mlps = torch.nn.ModuleList()
         self.batch_norms = torch.nn.ModuleList()
@@ -29,6 +32,10 @@ class GraphCNNSAT(nn.Module):
 
             self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
 
+
+        self.var_classification = var_classification
+        self.clause_classification = clause_classification
+
         self.linears_prediction = torch.nn.ModuleList()
         for layer in range(num_layers):
             if layer == 0:
@@ -38,48 +45,78 @@ class GraphCNNSAT(nn.Module):
 
         self.fc1 = nn.Linear(hidden_dim, output_dim)
 
-        #TODO/GUILLO define self.graph_pool for whole graph embedding
-        # will be block "diagonal" matrix of either ones (sum) or ones/numel (average)
-        # depending on how h is flattened
+    def next_layer_eps(self, h_clause, h_var, layer, biggraph):
+        # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
 
-    def next_layer_eps(self, h, layer, graph):
         # graph should be (maxvar+maxclause)*batch_size x(maxvar+maxclause)*batch_size
         # h should be (maxvar+maxclause)*batch_size
-        pooled = torch.spmm(graph,h)
-        if self.neighbor_pooling_type == "average":
-            degree = torch.spmm(graph, torch.ones((graph.shape[0], 1)).to(self.device))
-            pooled = pooled/degree
-        pooled = pooled + (1+self.eps[layer])*h
+
+        if self.half_compute:
+            clause_pooled = torch.hspmm(biggraph, h_var)
+            var_pooled = torch.hspmm(torch.transpose(biggraph), h_clause)
+
+            if self.neighbor_pooling_type == "average":
+                degree_clauses = torch.hspmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device))
+                clause_pooled = clause_pooled/degree_clauses
+                degree_vars = torch.hspmm(torch.transpose(biggraph), torch.ones((biggraph.shape[1], 1)).to(self.device))
+                var_pooled = var_pooled/degree_vars
+
+                pooled = torch.cat([clause_pooled, var_pooled])
+        else:
+            h = torch.cat([h_clause, h_var])
+            pooled = torch.hspmm(biggraph, h)
+            if self.neighbor_pooling_type == "average":
+                degree = torch.spmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device))
+                pooled = pooled/degree
+
+        pooled = pooled + (1+self.eps[layer])*torch.cat([h_clause, h_var])
         pooled_rep = self.mlps[layer](pooled)
         h = self.batch_norms[layer](pooled_rep)
         h = F.relu(h)
-        return h
+        return torch.split(h,self.maxclause)
 
     def forward(self, batch_graph, half = True):
 
         nclause = batch_graph[0].shape[0]
         nvar = batch_graph[0].shape[1]
 
-        clause_arities = [np.asarray(ssm.sum(axis=1)).flatten().resize(maxclause) for ssm in batch_graph]
-        var_arities = [np.asarray(ssm.sum(axis=0)).flatten().resize(maxvar) for ssm in batch_graph]
+        clause_arities = [torch.cat([torch.tensor(np.asarray(ssm.sum(axis=1).flatten())[0]),torch.zeros(self.maxclause-nclause,dtype=torch.int32)]) for ssm in batch_graph]
+        var_arities = [torch.cat([torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0]),torch.zeros(self.maxvar-nvar,dtype=torch.int32)]) for ssm in batch_graph]
 
         clause_feat = torch.cat(clause_arities, 0)
-        var_arities = torch.car(var_arities,0)
+        var_feat = torch.car(var_arities,0)
 
         if self.random:
-            r = torch.randint(self.random, size=(len(feat), 1)).float() / self.random
-            feat = torch.cat([feat, r],1).to(self.device)
+            r1 = torch.randint(self.random, size=(len(clause_feat), 1)).float() / self.random
+            clause_feat = torch.cat([clause_feat, r1],1).to(self.device)
+            r2 = torch.randint(self.random, size=(len(var_feat), 1)).float() / self.random
+            var_feat = torch.cat([var_feat, r],1).to(self.device)
 
-        hidden_rep = [feat]
+        if self.graph_embedding:
+            clause_hidden_rep = [clause_feat]
+            var_hidden_rep = [var_feat]
 
-        h = feat
+        h_clause = clause_feat
+        h_var = var_feat
+
+        biggraph = big_tensor_from_batch_graph(batch_graph)
+        # batch_graph is a list of batch_size * (nclause x nvar) matrices
+        # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
 
         for layer in range(self.num_layers-1):
-            h = self.next_layer_eps(h, layer, batch_graph)
-            hidden_rep.append(h)
+            h_clause, h_var  = self.next_layer_eps(h_clause,h_var, layer, biggraph)
+            if graph_embedding:
+                clause_hidden_rep.append(h_clause)
+                var_hidden_rep.append(h_var)
 
-        if self.node_classification:
-            return torch.softmax(self.fc1(h), 1)
+        if self.var_classification:
+            if self.clause_classification:
+                return torch.softmax(self.fc1(torch.cat([h_clause,h_var],axis=0), 1))
+            return torch.softmax(self.fc1(h_var, 1))
+        if self.clause_classification:
+            return torch.softmax(self.fc1(h_clause), 1)
+
+        #below graph_embedding only
 
         score_over_layer = 0
 
@@ -94,14 +131,11 @@ class GraphCNNSAT(nn.Module):
 
         return score_over_layer
 
-def batch_graph_from_graphlist(graphs,maxclause, maxvar, half = False):
-    for g in graphs:
-        g.resize(maxclause,maxvar)
-    if half:
-        mats = graphs
-    else
-        mats = []
+    def big_tensor_from_batch_graph(graphs):
+        #batch graph is maxclause*batch_size x maxvar*batch_size
         for g in graphs:
-            mats.extend([g,g.transpose()])
-    big_mat = scipy.sparse.block_diag(mats,format="coo", dtype= np.bool)
-    big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool))
+            g.resize(self.maxclause,self.maxvar)
+        big_mat = scipy.sparse.block_diag(graphs,format="coo", dtype= np.bool)
+        if not self.half_compute:
+            big_mat = scipy.sparse.block_diag([big_mat, big_mat.transpose])
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int32))
