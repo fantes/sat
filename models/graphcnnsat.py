@@ -77,7 +77,7 @@ class GraphCNNSAT(nn.Module):
             g.resize(self.maxclause,self.maxvar)
         big_mat = scipy.sparse.block_diag(graphs,format="coo", dtype= np.bool)
         if not self.half_compute:
-            big_mat = scipy.sparse.block_diag([big_mat, big_mat.transpose])
+            big_mat = scipy.sparse.block_diag([big_mat, big_mat.transpose()])
         big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int32)
         return big_tensor
 
@@ -112,9 +112,9 @@ class GraphCNNSAT(nn.Module):
             pooled = torch.cat([clause_pooled, var_pooled])
         else:
             h = torch.cat([h_clause, h_var])
-            pooled = torch.hspmm(biggraph, h)
+            pooled = torch.hspmm(biggraph, h).to_dense()
             if self.neighbor_pooling_type == "average":
-                degree = torch.spmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device))
+                degree = torch.hspmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device)).to_dense()
                 pooled = pooled/degree
 
         pooled = pooled + (1+self.eps[layer])*torch.cat([h_clause, h_var])
@@ -196,7 +196,7 @@ class GraphCNNSAT(nn.Module):
 
 
 def main():
-    model = GraphCNNSAT()
+    model = GraphCNNSAT(half_compute=False)
     tds = GraphDataset('../data/test/ex.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     ssm,labels = tds.getitem(0)
     batch_graph=[ssm,ssm]
