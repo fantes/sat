@@ -4,6 +4,11 @@ import random
 import numpy as np
 import preprocess
 import time
+import sys
+sys.path.append("../utils/")
+from utils import *
+
+
 
 class GraphDataset(torch.utils.data.Dataset):
 
@@ -29,7 +34,7 @@ class GraphDataset(torch.utils.data.Dataset):
             l = ll.strip().split()
             labels = l[:self.nlabels]
             graphfiles = l[self.nlabels:]
-            self.data.append({'l':labels,'f':graphfiles})
+            self.data.append({'labels':labels,'f':graphfiles})
             ll = f.readline()
 
         if self.permute_vars:
@@ -48,7 +53,7 @@ class GraphDataset(torch.utils.data.Dataset):
             self.negClauseMatrix = scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.nvar*2),dtype=bool)
 
 
-    def __len(self):
+    def __len__(self):
         return len(self.data)
 
     def mpermute(self,ssm, labels,permute_vars=True, permute_clauses=True):
@@ -73,10 +78,8 @@ class GraphDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         if idx in self.cache:
-            if self.permute:
-                return mpermute(self.cache[idx]['graph'],self.cache[idx]['labels'])
-            else:
-                return self.cache[idx]['graph'],self.cache[idx]['labels']
+            ssm, labels = self.mpermute(self.cache[idx]['graph'], self.cache[idx]['labels'],self.permute_vars, self.permute_clauses)
+            return {'graph':ssm, 'labels':labels}
         ssm = None
         for graphfile in self.data[idx]['f']:
             newssm = scipy.sparse.load_npz(self.path_prefix+graphfile)
@@ -87,18 +90,20 @@ class GraphDataset(torch.utils.data.Dataset):
 
         if len(self.cache) >= self.cachesize and self.cachesize> 0:
             del self.cache[random.choice(list(self.cache.keys()))]
-        self.cache[idx] = {'labels':self.data[idx]['l'],'graph':ssm}
+        self.cache[idx] = {'labels':self.data[idx]['labels'],'graph':ssm}
         if self.neg_clauses:
             ssm = self.addNegClauses(ssm)
-        return self.mpermute(ssm, self.data[idx]['l'],self.permute_vars, self.permute_clauses)
+        ssm,labels =  self.mpermute(ssm, self.data[idx]['labels'],self.permute_vars, self.permute_clauses)
+        return {'graph':ssm, 'labels':labels}
 
     def getitem(self,idx):
         return self.__getitem__(idx)
 
-def getDataLoader(filename, batch_size, num_workers=10, cachesize=100):
-    dset = GraphDataset(filename, cachesize=cachesize)
-    loader = torch.utils.data.DataLoader(dset, batch_size= batch_size, shuffle=True, num_workers=num_workers)
-    return loader
+
+    def getDataLoader(self, batch_size,  maxclause, maxvar, half_compute = True, graph_pool = False, num_workers=0):
+        #dset = GraphDataset(filename, cachesize=cachesize)
+        loader = torch.utils.data.DataLoader(self, batch_size= batch_size, shuffle=True, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, half_compute, graph_pool))
+        return loader
 
 
 def main():
@@ -107,11 +112,11 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset('./test/T102.2.1.graph', neg_clauses = False,  self_supervised = False, cachesize=0)
+    tds = GraphDataset('./test/ex.graph', neg_clauses = False,  self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
-    ssm , labels = tds.getitem(0)
+    ssm , labels = tds.getitem(0)['graph'],tds.getitem(0)['labels']
     end = time.process_time()
     print("get item time: " + str(end-start))
     print(ssm.shape)
@@ -126,7 +131,9 @@ def main():
     end =  time.process_time()
     print('clauseArity compute time: ' + str(end-start))
 
-
+    dl = tds.getDataLoader(2, 10, 20)
+    for i_batch, data in enumerate(dl):
+        print(data)
 
 
 

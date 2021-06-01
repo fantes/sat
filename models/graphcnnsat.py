@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import sys
 sys.path.append("models/")
 sys.path.append("../data/")
+sys.path.append("../utils/")
+from utils import *
 from graphDataset import GraphDataset
 from mlp import MLP
 
@@ -13,7 +15,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2, input_dim=1, hidden_dim=64, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, neighbor_pooling_type = "average", graph_pooling_type = "average", device=torch.device("cuda:0")):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, neighbor_pooling_type = "average", graph_pooling_type = "average", device=torch.device("cuda:0")):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -21,12 +23,12 @@ class GraphCNNSAT(nn.Module):
         self.device = device
         self.num_layers = num_layers
         self.random = random
-        self.input_dim = input_dim
+        self.input_dim = 1 # arities
 
         self.graph_embedding = graph_embedding
 
         if random:
-            self.input_dim = self.input_dim + random
+            self.input_dim = self.input_dim + random # could add multiple random values
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
 
@@ -72,27 +74,6 @@ class GraphCNNSAT(nn.Module):
         self.final_dropout = final_dropout
 
 
-    def big_tensor_from_batch_graph(self, graphs):
-        #batch graph is maxclause*batch_size x maxvar*batch_size
-        for g in graphs:
-            g.resize(self.maxclause,self.maxvar)
-        big_mat = scipy.sparse.block_diag(graphs,format="coo", dtype= np.bool)
-        if not self.half_compute:
-            big_mat = scipy.sparse.block_diag([big_mat, big_mat.transpose()])
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int32)
-        return big_tensor
-
-
-    def build_graph_pooler(self,batch_size,nclause,nvar):
-        blocks = []
-        for i in range(batch_size):
-            blocks.append(np.mat(np.ones((1,self.maxclause+self.maxvar))))
-            if self.graph_pooling_type == "average":
-                blocks[-1] = blocks[-1]/(nclause[i] + nvar[i])
-        spgraphpooler = scipy.sparse.block_diag(blocks)
-        self.graph_pooler = torch.sparse_coo_tensor([spgraphpooler.row,spgraphpooler.col],spgraphpooler.data, spgraphpooler.shape, dtype=torch.float32).to(self.device)
-
-
     def next_layer_eps(self, h_clause, h_var, layer, biggraph,batch_size):
         # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
         # h should be (maxvar+maxclause)*batch_size
@@ -121,31 +102,15 @@ class GraphCNNSAT(nn.Module):
         h = F.relu(h)
         return torch.split(h,[self.maxclause*batch_size,self.maxvar*batch_size])
 
-    def forward(self, batch_graph, half = True):
 
-
-        clause_arities = []
-        var_arities = []
-        nclause = []
-        nvar = []
-        batch_size = len(batch_graph)
-
-        for ssm in batch_graph:
-            nclause.append(ssm.shape[0])
-            nvar.append(ssm.shape[1])
-            clause_arities.append(torch.cat([torch.tensor(np.asarray(ssm.sum(axis=1).flatten())[0]),torch.zeros(self.maxclause-nclause[-1],dtype=torch.int32)]))
-            var_arities.append(torch.cat([torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0]),torch.zeros(self.maxvar-nvar[-1],dtype=torch.int32)]))
-
-        clause_feat = torch.cat(clause_arities, 0)
-        clause_feat.unsqueeze_(1)
-        var_feat = torch.cat(var_arities,0)
-        var_feat.unsqueeze_(1)
+    def forward(self, batch_size, biggraph, clause_feat, var_feat, graph_pooler):
 
         if self.random > 0:
-            r1 = torch.randint(self.random, size=(len(clause_feat),1)).float() / self.random
-            clause_feat = torch.cat([clause_feat, r1],1).to(self.device)
-            r2 = torch.randint(self.random, size=(len(var_feat), 1)).float() / self.random
-            var_feat = torch.cat([var_feat, r2],1).to(self.device)
+            for r in range(self.random):
+                r1 = torch.randint(self.random, size=(len(clause_feat),1)).float() / self.random
+                clause_feat = torch.cat([clause_feat, r1],1).to(self.device)
+                r2 = torch.randint(self.random, size=(len(var_feat), 1)).float() / self.random
+                var_feat = torch.cat([var_feat, r2],1).to(self.device)
 
         if self.graph_embedding:
             clause_hidden_rep = [clause_feat]
@@ -154,9 +119,6 @@ class GraphCNNSAT(nn.Module):
         h_clause = clause_feat.to(self.device)
         h_var = var_feat.to(self.device)
 
-        biggraph = self.big_tensor_from_batch_graph(batch_graph).to(self.device).to(torch.float32)
-        # batch_graph is a list of batch_size * (nclause x nvar) matrices
-        # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
 
         for layer in range(self.num_layers-1):
             h_clause, h_var  = self.next_layer_eps(h_clause,h_var, layer, biggraph,batch_size)
@@ -174,30 +136,31 @@ class GraphCNNSAT(nn.Module):
             return torch.softmax(self.fc1(h_clause), 1)
 
 
-
-
         #below graph_embedding only
-
         score_over_layer = 0
-
-        #could be moved in constructor for a  fixed batch_size
-        self.build_graph_pooler(batch_size, nclause,nvar)
 
         #perform pooling over all nodes in each graph in every layer
         for layer, (h_clause,h_var) in enumerate(zip(clause_hidden_rep,var_hidden_rep)):
             h = torch.cat([h_clause, h_var])
-            pooled_h = torch.spmm(self.graph_pooler, h)
+            pooled_h = torch.spmm(graph_pooler, h)
             score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout, training = self.training)
 
         return score_over_layer
 
 
 def main():
-    model = GraphCNNSAT(var_classification=False, clause_classification=False, graph_embedding = True)
+    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False)
     tds = GraphDataset('../data/test/ex.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
-    ssm,labels = tds.getitem(0)
-    batch_graph=[ssm,ssm]
-    model.forward(batch_graph)
+    m,labels = tds.getitem(0)['graph'], tds.getitem(0)['labels']
+    batch_graph=[m,m]
+
+    batch_size = 2
+
+    clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, model.maxclause, model.maxvar)
+
+    biggraph = big_tensor_from_batch_graph(batch_graph,model.maxclause,model.maxvar).to(model.device).to(torch.float32)
+
+    model.forward(batch_size, biggraph, clause_feat, var_feat, None)
 
 if __name__ == '__main__':
     main()
