@@ -61,11 +61,12 @@ class GraphCNNSAT(nn.Module):
         self.clause_classification = clause_classification
 
         self.linears_prediction = torch.nn.ModuleList()
-        for layer in range(num_layers):
+        for layer in range(self.num_layers):
             if layer == 0:
                 self.linears_prediction.append(nn.Linear(self.input_dim, self.output_dim))
             else:
                 self.linears_prediction.append(nn.Linear(self.hidden_dim, self.output_dim))
+        self.linears_prediction.to(self.device)
 
         self.fc1 = nn.Linear(self.hidden_dim, self.output_dim).to(device)
         self.final_dropout = final_dropout
@@ -85,19 +86,16 @@ class GraphCNNSAT(nn.Module):
     def build_graph_pooler(self,batch_size,nclause,nvar):
         blocks = []
         for i in range(batch_size):
-            blocks.append(np.mat(np.ones(self.maxclause+self.maxvar)))
+            blocks.append(np.mat(np.ones((1,self.maxclause+self.maxvar))))
             if self.graph_pooling_type == "average":
                 blocks[-1] = blocks[-1]/(nclause[i] + nvar[i])
-        spgraphpooler = scipy.sparse.block_diag([blocks])
-        self.graph_pooler = torch.sparse_coo_tensor([spgraphpooler.row,spgraphpooler.col],spgraphpooler.data, spgraphpooler.shape, dtype=torch.float32)
+        spgraphpooler = scipy.sparse.block_diag(blocks)
+        self.graph_pooler = torch.sparse_coo_tensor([spgraphpooler.row,spgraphpooler.col],spgraphpooler.data, spgraphpooler.shape, dtype=torch.float32).to(self.device)
 
 
     def next_layer_eps(self, h_clause, h_var, layer, biggraph,batch_size):
         # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
-
-        # graph should be (maxvar+maxclause)*batch_size x(maxvar+maxclause)*batch_size
         # h should be (maxvar+maxclause)*batch_size
-
 
         if self.half_compute:
             clause_pooled = torch.hspmm(biggraph, h_var).to_dense()
@@ -183,20 +181,19 @@ class GraphCNNSAT(nn.Module):
         score_over_layer = 0
 
         #could be moved in constructor for a  fixed batch_size
-        graph_pooler = self.build_graph_pooler(batch_size, nclause,nvar)
-
+        self.build_graph_pooler(batch_size, nclause,nvar)
 
         #perform pooling over all nodes in each graph in every layer
-        for layer, h in enumerate(zip(h_clause,h_var)):
+        for layer, (h_clause,h_var) in enumerate(zip(clause_hidden_rep,var_hidden_rep)):
             h = torch.cat([h_clause, h_var])
-            pooled_h = torch.spmm(self.graph_pool, h)
+            pooled_h = torch.spmm(self.graph_pooler, h)
             score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout, training = self.training)
 
         return score_over_layer
 
 
 def main():
-    model = GraphCNNSAT(half_compute=False)
+    model = GraphCNNSAT(var_classification=False, clause_classification=False, graph_embedding = True)
     tds = GraphDataset('../data/test/ex.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     ssm,labels = tds.getitem(0)
     batch_graph=[ssm,ssm]
