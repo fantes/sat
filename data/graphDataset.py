@@ -7,15 +7,15 @@ import time
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100):
+    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./"):
         self.fname = filename
         self.cachesize = cachesize
         self.cache = {}
         self.data = []
+        self.path_prefix = path_prefix
         self.self_supervised = self_supervised
         f = open(self.fname,'r')
         l = f.readline().strip().split()
-        print(l)
         self.nlabels = int(l[0])
         self.nclause = int(l[1])
         self.nvar = int(l[2])
@@ -79,7 +79,7 @@ class GraphDataset(torch.utils.data.Dataset):
                 return self.cache[idx]['graph'],self.cache[idx]['labels']
         ssm = None
         for graphfile in self.data[idx]['f']:
-            newssm = scipy.sparse.load_npz(graphfile)
+            newssm = scipy.sparse.load_npz(self.path_prefix+graphfile)
             if ssm is None:
                 ssm = newssm
             else:
