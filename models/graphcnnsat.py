@@ -139,16 +139,18 @@ class GraphCNNSAT(nn.Module):
 
         # add last fully adjacent layer see https://arxiv.org/abs/2006.05205
         if self.lfa:
-            new_h_var = torch.empty_like(h_var)
-            new_h_clause = torch.empty_like(h_clause)
-            for b in range(batch_size):
-                new_h_var[b*self.maxvar:(b+1)*self.maxvar] = self.var_lfa(h_var[b*self.maxvar:(b+1)*self.maxvar].T).T
-                new_h_clause[b*self.maxclause:(b+1)*self.maxclause] = self.clause_lfa(h_clause[b*self.maxclause:(b+1)*self.maxclause].T).T
-            h_var = new_h_var
-            h_clause = new_h_clause
+            batched_var = torch.reshape(h_var,(batch_size, self.maxvar, -1))
+            lin_var = self.var_lfa(torch.transpose(batched_var,1,2))
+            h_var = torch.reshape(torch.transpose(lin_var, 1,2),(batch_size*self.maxvar,-1))
+
+            batched_clause = torch.reshape(h_var,(batch_size, self.maxclause, -1))
+            lin_clause = self.clause_lfa(torch.transpose(batched_clause,1,2))
+            h_clause = torch.reshape(torch.transpose(lin_clause, 1,2),(batch_size*self.maxclause,-1))
+
             if self.graph_embedding:
-                clause_hidden_rep.append(new_h_clause)
-                var_hidden_rep.append(new_h_var)
+                clause_hidden_rep.append(h_clause)
+                var_hidden_rep.append(h_var)
+
 
 
         if self.var_classification:
