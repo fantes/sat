@@ -22,8 +22,8 @@ def train(model,dataset,batch_size, num_workers, graph_classif = False):
 
 
 def main():
-        parser = argparse.ArgumentParser(description='sat trainer')
-            parser.add_argument('--num_layers', type=int, default=10,
+    parser = argparse.ArgumentParser(description='sat trainer')
+    parser.add_argument('--num_layers', type=int, default=10,
                                 help='number of layers (neighborhood depth)  (default: 10)')
     parser.add_argument('--num_mlp_layers', type=int, default=2,
                         help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
