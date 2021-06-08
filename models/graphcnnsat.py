@@ -15,7 +15,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, neighbor_pooling_type = "average", graph_pooling_type = "average", device=torch.device("cuda:0")):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, neighbor_pooling_type = "average", graph_pooling_type = "average", lfa = True, device=torch.device("cuda:0")):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -32,7 +32,7 @@ class GraphCNNSAT(nn.Module):
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
 
-
+        self.lfa = lfa #last fully adjacent layer
         self.maxclause = maxclause
         self.maxvar = maxvar
         self.half_compute = half_compute
@@ -73,10 +73,18 @@ class GraphCNNSAT(nn.Module):
         self.fc1 = nn.Linear(self.hidden_dim, self.output_dim).to(device)
         self.final_dropout = final_dropout
 
+        if self.lfa:
+            self.var_lfa = nn.Linear(self.maxvar, self.maxvar).to(device)
+            self.clause_lfa = nn.Linear(self.maxclause, self.maxclause).to(device)
+
 
     def next_layer_eps(self, h_clause, h_var, layer, biggraph,batch_size):
         # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
         # h should be (maxvar+maxclause)*batch_size
+
+        # TODO see https://arxiv.org/abs/2101.10050 (page 5)
+        # for an updated rule to learn in a larger adjacency operator space
+
 
         if self.half_compute:
             clause_pooled = torch.hspmm(biggraph, h_var).to_dense()
@@ -98,8 +106,11 @@ class GraphCNNSAT(nn.Module):
 
         pooled = pooled + (1+self.eps[layer])*torch.cat([h_clause, h_var])
         pooled_rep = self.mlps[layer](pooled)
+        #TODO add graphnorm, see https://arxiv.org/abs/2009.03294
+        #https://github.com/lsj2408/GraphNorm
         h = self.batch_norms[layer](pooled_rep)
         h = F.relu(h)
+
         return torch.split(h,[self.maxclause*batch_size,self.maxvar*batch_size])
 
 
@@ -126,6 +137,18 @@ class GraphCNNSAT(nn.Module):
                 clause_hidden_rep.append(h_clause)
                 var_hidden_rep.append(h_var)
 
+        # add last fully adjacent layer see https://arxiv.org/abs/2006.05205
+        if self.lfa:
+            new_h_var = torch.empty_like(h_var)
+            new_h_clause = torch.empty_like(h_clause)
+            for b in range(batch_size):
+                new_h_var[b*self.maxvar:(b+1)*self.maxvar] = self.var_lfa(h_var[b*self.maxvar:(b+1)*self.maxvar].T).T
+                new_h_clause[b*self.maxclause:(b+1)*self.maxclause] = self.clause_lfa(h_clause[b*self.maxclause:(b+1)*self.maxclause].T).T
+            h_var = new_h_var
+            h_clause = new_h_clause
+            if self.graph_embedding:
+                clause_hidden_rep.append(new_h_clause)
+                var_hidden_rep.append(new_h_var)
 
 
         if self.var_classification:
@@ -143,6 +166,7 @@ class GraphCNNSAT(nn.Module):
         for layer, (h_clause,h_var) in enumerate(zip(clause_hidden_rep,var_hidden_rep)):
             h = torch.cat([h_clause, h_var])
             pooled_h = torch.spmm(graph_pooler, h)
+            #below this can be considered as  page rank, see https://arxiv.org/abs/2006.07988
             score_over_layer += F.dropout(self.linears_prediction[layer](pooled_h), self.final_dropout, training = self.training)
 
         return score_over_layer
@@ -152,9 +176,9 @@ def main():
     model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False)
     tds = GraphDataset('../data/test/ex.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     m,labels = tds.getitem(0)['graph'], tds.getitem(0)['labels']
-    batch_graph=[m,m]
+    batch_graph=[m,m,m]
 
-    batch_size = 2
+    batch_size = len(batch_graph)
 
     clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, model.maxclause, model.maxvar)
 
