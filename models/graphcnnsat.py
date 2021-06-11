@@ -15,7 +15,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, neighbor_pooling_type = "average", graph_pooling_type = "average", lfa = True, device=torch.device("cuda:0")):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, neighbor_pooling_type = "average", graph_pooling_type = "average", lfa = True, device=torch.device("cuda:0")):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -24,6 +24,9 @@ class GraphCNNSAT(nn.Module):
         self.num_layers = num_layers
         self.random = random
         self.input_dim = 1 # arities
+
+        self.PGSO = PGSO
+        self.mPGSO = mPGSO
 
         self.graph_embedding = graph_embedding
 
@@ -42,6 +45,24 @@ class GraphCNNSAT(nn.Module):
         self.graph_pooling_type = graph_pooling_type
 
         self.eps = nn.Parameter(torch.ones(self.num_layers-1))
+        if self.mPGSO:
+            self.a = nn.Parameter(torch.ones(self.num_layers-1))
+            self.m1 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.m2 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.m3 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.e1 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.e2 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.e3 = nn.Parameter(torch.ones(self.num_layers-1))
+            self.PGSO = True
+        elif self.PGSO:
+            self.a = nn.Parameter(torch.ones(1))
+            self.m1 = nn.Parameter(torch.ones(1))
+            self.m2 = nn.Parameter(torch.ones(1))
+            self.m3 = nn.Parameter(torch.ones(1))
+            self.e1 = nn.Parameter(torch.ones(1))
+            self.e2 = nn.Parameter(torch.ones(1))
+            self.e3 = nn.Parameter(torch.ones(1))
+
 
         self.mlps = torch.nn.ModuleList()
         self.batch_norms = torch.nn.ModuleList()
@@ -85,26 +106,78 @@ class GraphCNNSAT(nn.Module):
         # TODO see https://arxiv.org/abs/2101.10050 (page 5)
         # for an updated rule to learn in a larger adjacency operator space
 
+        if self.neighbor_pooling_type == "average" or self.PGSO:
+            if self.half_compute:
+                degree_clauses = torch.hspmm(biggraph, torch.ones((biggraph.shape[1], 1)).to(self.device)).to_dense()
+                degree_vars = torch.hspmm(torch.transpose(biggraph,0,1), torch.ones((biggraph.shape[0], 1)).to(self.device)).to_dense()
+            else:
+                degree = torch.hspmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device)).to_dense()
+            degrees = torch.cat([degree_clauses, degree_vars])
+
+
+        # how to weight efficiently every param in hspmm sum
+
+        if self.PGSO:
+            lindex = 0
+        if self.mPGSO:
+            lindex = layer
+        if self.PGSO or self.mPGSO:
+            la = self.a[lindex]
+            le1 = self.e1[lindex]
+            le2 = self.e2[lindex]
+            le3 = self.e3[lindex]
+            lm1 = self.m1[lindex]
+            lm2 = self.m2[lindex]
+            lm3 = self.m3[lindex]
+
 
         if self.half_compute:
-            clause_pooled = torch.hspmm(biggraph, h_var).to_dense()
-            var_pooled = torch.hspmm(torch.transpose(biggraph,0,1), h_clause).to_dense()
 
-            if self.neighbor_pooling_type == "average":
-                degree_clauses = torch.hspmm(biggraph, torch.ones((biggraph.shape[1], 1)).to(self.device)).to_dense()
+            if self.PGSO:
+                dje3 = torch.pow(degree_vars * la,le3)
+                h_var_dje3 = torch.mul(h_var,dje3)
+                clause_pooled = torch.hspmm(biggraph, h_var_dje3).to_dense()
+                die2 = torch.pow(degree_clauses,le2)
+                clause_pooled = torch.mul(clause_pooled, die2)
+
+                dje3 = torch.pow(degree_clauses,le3)
+                h_clause_dje3 = torch.mul(h_clause,dje3)
+                var_pooled = torch.hspmm(torch.transpose(biggraph,0,1), h_clause_dje3).to_dense()
+                die2 = torch.pow(degree_vars * la ,le2)
+                var_pooled = torch.mul(var_pooled, die2)
+
+            else:
+
+                clause_pooled = torch.hspmm(biggraph, h_var).to_dense()
+                var_pooled = torch.hspmm(torch.transpose(biggraph,0,1), h_clause).to_dense()
+
+
+            if self.neighbor_pooling_type == "average": #should be subsumed by PGSO
                 clause_pooled = clause_pooled/degree_clauses
-                degree_vars = torch.hspmm(torch.transpose(biggraph,0,1), torch.ones((biggraph.shape[0], 1)).to(self.device)).to_dense()
                 var_pooled = var_pooled/degree_vars
 
             pooled = torch.cat([clause_pooled, var_pooled])
         else:
             h = torch.cat([h_clause, h_var])
-            pooled = torch.hspmm(biggraph, h).to_dense()
-            if self.neighbor_pooling_type == "average":
-                degree = torch.hspmm(biggraph, torch.ones((biggraph.shape[0], 1)).to(self.device)).to_dense()
+
+            if self.PGSO:
+                dje3 = torch.pow(degrees * la, le3)
+                h_dje3 = torch.mul(h,dje3)
+                pooled = torch.hspmm(biggraph, h_dje3).to_dense()
+                die2 = torch.pow(degrees, le2)
+                pooled = torch.mul(pooled, die2)
+            else:
+                pooled = torch.hspmm(biggraph, h).to_dense()
+
+            if self.neighbor_pooling_type == "average": #should be subsumed by graph_shift
                 pooled = pooled/degree
 
-        pooled = pooled + (1+self.eps[layer])*torch.cat([h_clause, h_var])
+        if self.PGSO:
+            dai_e1 = torch.pow(degrees, le1)
+            h = torch.cat([h_clause, h_var])
+            pooled = (dai_e1 * lm1 * h) + lm3 * h + lm2 * pooled
+        else:
+            pooled = pooled + (1+self.eps[layer])*torch.cat([h_clause, h_var])
         pooled_rep = self.mlps[layer](pooled)
         #TODO add graphnorm, see https://arxiv.org/abs/2009.03294
         #https://github.com/lsj2408/GraphNorm
@@ -175,7 +248,7 @@ class GraphCNNSAT(nn.Module):
 
 
 def main():
-    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False)
+    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True)
     tds = GraphDataset('../data/test/ex.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     m,labels = tds.getitem(0)['graph'], tds.getitem(0)['labels']
     batch_graph=[m,m,m]
@@ -184,6 +257,7 @@ def main():
 
     clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, model.maxclause, model.maxvar)
 
+    #TODO : precompute degrees
     biggraph = big_tensor_from_batch_graph(batch_graph,model.maxclause,model.maxvar).to(model.device).to(torch.float32)
 
     model.forward(batch_size, biggraph, clause_feat, var_feat, None)
