@@ -8,6 +8,7 @@ sys.path.append("../data/")
 sys.path.append("../utils/")
 from utils import *
 from graphDataset import GraphDataset
+from graphNorm import GraphNorm
 from mlp import MLP
 
 import numpy as np
@@ -15,7 +16,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, neighbor_pooling_type = "average", graph_pooling_type = "average", lfa = True, device=torch.device("cuda:0")):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=8, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, half_compute = True, var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "average", graph_pooling_type = "average", lfa = True, device=torch.device("cuda:0")):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -39,6 +40,8 @@ class GraphCNNSAT(nn.Module):
         self.maxclause = maxclause
         self.maxvar = maxvar
         self.half_compute = half_compute
+
+        self.graph_norm = graph_norm
 
         self.neighbor_pooling_type = neighbor_pooling_type
 
@@ -65,7 +68,7 @@ class GraphCNNSAT(nn.Module):
 
 
         self.mlps = torch.nn.ModuleList()
-        self.batch_norms = torch.nn.ModuleList()
+        self.norms = torch.nn.ModuleList()
 
         self.num_mlp_layers = num_mlp_layers
 
@@ -75,10 +78,13 @@ class GraphCNNSAT(nn.Module):
             else:
                 self.mlps.append(MLP(self.num_mlp_layers, self.hidden_dim, self.hidden_dim, self.hidden_dim))
 
-            self.batch_norms.append(nn.BatchNorm1d(self.hidden_dim))
+            if self.graph_norm:
+                self.norms.append(GraphNorm(self.hidden_dim,self.maxclause, self.maxvar))
+            else:
+                self.norms.append(nn.BatchNorm1d(self.hidden_dim))
 
         self.mlps.to(self.device)
-        self.batch_norms.to(self.device)
+        self.norms.to(self.device)
 
         self.var_classification = var_classification
         self.clause_classification = clause_classification
@@ -103,8 +109,7 @@ class GraphCNNSAT(nn.Module):
         # biggraph is (maxclause * batchsize ) x (mavvar * batchsize)
         # h should be (maxvar+maxclause)*batch_size
 
-        # TODO see https://arxiv.org/abs/2101.10050 (page 5)
-        # for an updated rule to learn in a larger adjacency operator space
+        # PGSO see https://arxiv.org/abs/2101.10050 (page 5)
 
         if self.neighbor_pooling_type == "average" or self.PGSO:
             if self.half_compute:
@@ -181,7 +186,7 @@ class GraphCNNSAT(nn.Module):
         pooled_rep = self.mlps[layer](pooled)
         #TODO add graphnorm, see https://arxiv.org/abs/2009.03294
         #https://github.com/lsj2408/GraphNorm
-        h = self.batch_norms[layer](pooled_rep)
+        h = self.norms[layer](pooled_rep)
         h = F.relu(h)
 
         return torch.split(h,[self.maxclause*batch_size,self.maxvar*batch_size])
