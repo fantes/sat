@@ -7,13 +7,18 @@ import numpy as np
 import pickle
 import tqdm
 
-def conv_vindex(v, nvar):
-    if v<0:
-        return -v+nvar-1
-    return v-1
+def conv_vindex(v, nvar, neg_as_link):
+    if neg_as_link:
+        if v<0:
+            return -v-1
+        return v-1
+    else:
+        if v<0:
+            return -v+nvar-1
+        return v-1
 
 
-def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
+def preprocess(varvar, neg_as_link, cnffile,target_dir,nfiles, save_arity):
     basename = os.path.basename(cnffile)
     noext = os.path.splitext(basename)[0]
     matrixfiles = []
@@ -35,7 +40,10 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
         print('number of clauses: ' + str(nclauses))
 
         if save_arity:
-            varArity = [0]*nvars*2
+            if neg_as_link:
+                varArity = [0]*nvars
+            else:
+                varArity = [0]*nvars*2
             clauseArity = [0] * nclauses
 
         start = time.process_time()
@@ -52,15 +60,24 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                 if not varvar:
                     totalnvc += len(c)
                     indices0.extend([nc]*(len(c)))
-                    varidx = [conv_vindex(int(v),nvars) for v in c]
+                    varidx = [conv_vindex(int(v),nvars,neg_as_link) for v in c]
                     indices1.extend(varidx)
+                    if neg_as_link:
+                        for v in c:
+                            if int(v)<0:
+                                values.append(-1)
+                            else:
+                                values.append(1)
+                    else:
+                        values.extend([True]*len(c))
+
                     if save_arity:
                         clauseArity[clauseidx] = len(c)
                         for v in varidx:
                             varArity[v] += 1
                 else:
                     totalnvc += int(len(c) * (len(c)-1)/2)
-                    c = [conv_vindex(int(v),nvars) for v in c]
+                    c = [conv_vindex(int(v),nvars,neg_as_link) for v in c]
                     for v1 in range(0, len(c)):
                         for v2 in range(v1+1, len(c)):
                             i1 = c[v1]
@@ -71,14 +88,17 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                             else:
                                 indices0.append(i2)
                                 indices1.append(i1)
+                            values.append(True)
                     if save_arity:
                         for v in c:
                             varArity[v] += len(c)-1
                 clauseidx += 1
 
-            values = [True] * (totalnvc)
             if not varvar:
-                smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,nvars*2))
+                if neg_as_link:
+                    smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.byte,shape=(numClausesPerFile,nvars))
+                else:
+                    smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(numClausesPerFile,nvars*2))
             else:
                 smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nvars*2,nvars*2))
 
@@ -99,15 +119,23 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                 if not varvar:
                     totalnvc += len(c)
                     indices0.extend([nc]*(len(c)))
-                    varidx = [conv_vindex(int(v),nvars) for v in c]
+                    varidx = [conv_vindex(int(v),nvars,neg_as_link) for v in c]
                     indices1.extend(varidx)
+                    if neg_as_link:
+                        for v in c:
+                            if int(v)<0:
+                                values.append(-1)
+                            else:
+                                values.append(1)
+                    else:
+                        values.extend([True]*len(c))
                     if save_arity:
                         clauseArity[clauseidx] = len(c)
                         for v in varidx:
                             varArity[v] += 1
                 else:
                     totalnvc += int(len(c) * (len(c)-1)/2)
-                    c = [conv_vindex(int(v),nvars) for v in c]
+                    c = [conv_vindex(int(v),nvars,neg_as_link) for v in c]
                     for v1 in range(0, len(c)):
                         for v2 in range(v1+1, len(c)):
                             i1 = c[v1]
@@ -118,14 +146,17 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                             else:
                                 indices0.append(i2)
                                 indices1.append(i1)
+                            values.append(True)
                     if save_arity:
                         for v in c:
                             varArity[v] += len(c)-1
                 clauseidx += 1
 
-            values = [True] * (totalnvc)
             if not varvar:
-                smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-lastclauseidx,nvars*2))
+                if neg_as_link:
+                    smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.byte,shape=(nclauses-lastclauseidx,nvars))
+                else:
+                    smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nclauses-lastclauseidx,nvars*2))
             else:
                 smatrix = scipy.sparse.csr_matrix((np.asarray(values),(np.asarray(indices0),np.asarray(indices1))),dtype=np.bool,shape=(nvars*2,nvars*2))
 
@@ -156,6 +187,7 @@ def main():
     parser.add_argument('--nfiles', type=int, default=10, help='number of graphs')
     parser.add_argument('--target', type=str, default=".", help='target dir')
     parser.add_argument('--arity', action='store_true')
+    parser.add_argument('--neg-as-link', action='store_true')
     parser.add_argument('--type', type=str, default="clause.var", help='graph type, in [clause.var|var.var]')
     args = parser.parse_args()
 
@@ -166,7 +198,7 @@ def main():
     else:
         print("unknown graph type")
         exit(-1)
-    preprocess(varvar, args.filename, args.target, args.nfiles, args.arity)
+    preprocess(varvar, args.neg_as_link, args.filename, args.target, args.nfiles, args.arity)
 
 if __name__ == '__main__' :
     main()
