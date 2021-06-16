@@ -45,11 +45,11 @@ def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.half):
     for ssm in batch_graph:
         if not varvar: #ie clause x var
             nclause.append(ssm.shape[0])
-            clause_arities.append(torch.cat([torch.tensor(np.asarray(ssm.sum(axis=1).flatten())[0]),torch.zeros(maxclause-nclause[-1],dtype=torch.int32)]))
+            clause_arities.append(torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]),torch.zeros(maxclause-nclause[-1],dtype=torch.int32)]))
         nvar.append(ssm.shape[1])
         ar = torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0])
         if varvar: # we store on disk only directed links
-            ar += torch.tensor(np.asarray(ssm.sum(axis=1).flatten())[0])
+            ar += torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0])
         var_arities.append(torch.cat([ar,torch.zeros(maxvar-nvar[-1],dtype=torch.int32)]))
 
     if not varvar:
