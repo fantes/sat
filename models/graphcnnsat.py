@@ -291,9 +291,9 @@ class GraphCNNSAT(nn.Module):
 
 def main():
     varvar = False
-    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=False, maxclause = 20000000, maxvar = 9000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
+    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=False, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
     model.half()
-    tds = GraphDataset('../data/test_clausevar/T102.2.1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/", neg_clauses=True, varvar=varvar)
+    tds = GraphDataset('../data/test_clausevar_negaslink/T102.2.1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/", neg_as_link=True)
     m,labels = tds.getitem(0)
     batch_graph=[m]
 
@@ -304,7 +304,7 @@ def main():
     clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, varvar, model.maxclause, model.maxvar, dtype=torch.half)
 
     #TODO : precompute degrees
-    biggraph = big_tensor_from_batch_graph(batch_graph,varvar, model.maxclause,model.maxvar).to(model.device).to(torch.float)
+    biggraph = big_tensor_from_batch_graph(batch_graph,varvar, model.maxclause,model.maxvar,neg_as_link=True).to(model.device).to(torch.float)
 
 
 
