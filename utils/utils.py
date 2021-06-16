@@ -13,7 +13,6 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar):
         else:
             g.resize(maxclause,maxvar)
     big_mat = graphs[0].tocoo(copy=False)
-    print(big_mat.nnz)
     for g in graphs[1:]:
         big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.bool)
     big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool)

@@ -17,7 +17,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=1, output_dim=2, final_dropout=0.5, random = 0, maxclause = 10, maxvar = 20, graph_type = "var.var", var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "sum", graph_pooling_type = "average", lfa = True,  device=torch.device("cuda:1")):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=2, output_dim=2, final_dropout=0.5, random = 0, maxclause = 10, maxvar = 20, graph_type = "var.var", var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "sum", graph_pooling_type = "average", lfa = True,  device=torch.device("cuda:0")):
 
         super(GraphCNNSAT, self).__init__()
 
@@ -291,7 +291,7 @@ class GraphCNNSAT(nn.Module):
 
 def main():
     varvar = False
-    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=False, maxclause = 20000000, maxvar = 9000000, lfa = False, graph_norm = True, num_layers=4, graph_type="clause.var")
+    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=False, maxclause = 20000000, maxvar = 9000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
     model.half()
     tds = GraphDataset('../data/test_clausevar/T102.2.1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/", neg_clauses=True, varvar=varvar)
     m,labels = tds.getitem(0)

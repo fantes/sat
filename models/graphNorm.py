@@ -19,7 +19,6 @@ class GraphNorm(nn.Module):
 
     def forward(self, h):
         batchsize = int(h.shape[0]/(self.maxclause+self.maxvar))
-        print("batchsize " +str(batchsize))
         mean = torch.zeros(batchsize, h.shape[1],dtype=h.dtype).to(h.device)
         batch_index = torch.arange(batchsize).to(h.device).repeat_interleave(self.maxvar+self.maxclause)
         batch_index = batch_index.view((-1,1)).expand_as(h)
