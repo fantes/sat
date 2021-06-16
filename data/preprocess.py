@@ -18,6 +18,10 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
     noext = os.path.splitext(basename)[0]
     matrixfiles = []
 
+    try:
+        os.mkdir(target_dir)
+    except:
+        pass
 
     with open(cnffile, 'r') as f:
 
@@ -59,8 +63,14 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                     c = [conv_vindex(int(v),nvars) for v in c]
                     for v1 in range(0, len(c)):
                         for v2 in range(v1+1, len(c)):
-                            indices0.append(c[v1])
-                            indices1.append(c[v2])
+                            i1 = c[v1]
+                            i2 = c[v2]
+                            if i1 < i2:
+                                indices0.append(i1)
+                                indices1.append(i2)
+                            else:
+                                indices0.append(i2)
+                                indices1.append(i1)
                     if save_arity:
                         for v in c:
                             varArity[v] += len(c)-1
@@ -100,10 +110,14 @@ def preprocess(varvar, cnffile,target_dir,nfiles, save_arity):
                     c = [conv_vindex(int(v),nvars) for v in c]
                     for v1 in range(0, len(c)):
                         for v2 in range(v1+1, len(c)):
-                            indices0.append(c[v1])
-                            indices1.append(c[v2])
-                        # indices1.append(c[v1])
-                        # indices0.append(c[v2])
+                            i1 = c[v1]
+                            i2 = c[v2]
+                            if i1 < i2:
+                                indices0.append(i1)
+                                indices1.append(i2)
+                            else:
+                                indices0.append(i2)
+                                indices1.append(i1)
                     if save_arity:
                         for v in c:
                             varArity[v] += len(c)-1
