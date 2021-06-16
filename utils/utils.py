@@ -5,7 +5,7 @@ import numpy as np
 
 
 
-def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar):
+def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     #batch graph is maxclause*batch_size x maxvar*batch_size
     for g in graphs:
         if varvar:
@@ -14,8 +14,14 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar):
             g.resize(maxclause,maxvar)
     big_mat = graphs[0].tocoo(copy=False)
     for g in graphs[1:]:
-        big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.bool)
-    big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool)
+        if neg_as_link:
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.int8)
+        else:
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.bool)
+    if neg_as_link:
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int8)
+    else:
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool)
     return big_tensor
 
 
@@ -58,12 +64,12 @@ def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.half):
     return None, var_feat.to(dtype), None, nvar
 
 
-def postproc(data, maxclause,maxvar,varvar=True, graph_pool=False):
+def postproc(data, maxclause,maxvar,varvar, graph_pool=False, neg_as_link = True):
     batch_size = len(data)
     graph_batch=[d[0] for d in data]
     label_batch = [d[1] for d in data]
     clause_feat, var_feat, nclause, nvar = get_feat(graph_batch, varvar, maxclause, maxvar)
-    biggraph = big_tensor_from_batch_graph(graph_batch,varvar,maxclause,maxvar).to(torch.half)
+    biggraph = big_tensor_from_batch_graph(graph_batch,varvar,maxclause,maxvar,neg_as_link)
 
     if graph_pool:
         graph_pooler = build_graph_pooler(batch_size, nclause, nvar, maxclause, maxvar)

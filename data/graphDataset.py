@@ -12,7 +12,7 @@ from utils import *
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./", varvar = True):
+    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./", varvar = False, neg_as_link =False):
         self.fname = filename
         self.cachesize = cachesize
         self.cache = {}
@@ -24,10 +24,11 @@ class GraphDataset(torch.utils.data.Dataset):
         self.nlabels = int(l[0])
         self.nclause = int(l[1])
         self.nvar = int(l[2])
-        self.varvar = varvar
+        self.neg_as_link = neg_as_link
+        self.varvar = not self.neg_as_link and varvar
         self.permute_vars = permute_vars
         self.permute_clauses = not self.varvar and permute_clauses
-        self.neg_clauses = neg_clauses
+        self.neg_clauses = not self.neg_as_link and  neg_clauses
         if neg_clauses:
             self.nclause = self.nclause+self.nvar
         ll = f.readline()
@@ -66,9 +67,15 @@ class GraphDataset(torch.utils.data.Dataset):
     def mpermute(self,ssm, labels):
         res = ssm
         if self.permute_vars:
-            varPermuted = np.random.permutation(list(range(self.nvar*2)))
+            if self.neg_as_link:
+                varPermuted = np.random.permutation(list(range(self.nvar)))
+            else:
+                varPermuted = np.random.permutation(list(range(self.nvar*2)))
             if not self.varvar:
-                vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar*2,self.nvar*2),dtype=bool)
+                if self.neg_as_link:
+                    vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar,self.nvar),dtype=byte)
+                else:
+                    vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar*2,self.nvar*2),dtype=bool)
                 res =  ssm * vperMatrix
             else :
                 vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar*2,self.nvar*2),dtype=bool)
@@ -84,6 +91,8 @@ class GraphDataset(torch.utils.data.Dataset):
         return res, labels
 
     def addNegClauses(self,ssm):
+        if self.neg_as_link:
+            return ssm
         if self.varvar:
             return ssm+self.negClauseMatrix
         else:
@@ -123,7 +132,7 @@ class GraphDataset(torch.utils.data.Dataset):
 
     def getDataLoader(self, batch_size,  maxclause, maxvar, varvar = True, graph_pool = False, num_workers=0):
         #dset = GraphDataset(filename, cachesize=cachesize)
-        loader = torch.utils.data.DataLoader(self, batch_size= batch_size, shuffle=True, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, varvar, graph_pool))
+        loader = torch.utils.data.DataLoader(self, batch_size= batch_size, shuffle=True, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link))
         return loader
 
 
@@ -133,26 +142,26 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset('./test_varvar/T102.2.1.graph', neg_clauses = True,  self_supervised = False, cachesize=0, varvar=True)
+    tds = GraphDataset('./test_clausevar_negaslink/T102.2.1.graph', neg_clauses = False,  self_supervised = False, cachesize=0, varvar=False, neg_as_link = True)
     end = time.process_time()
-    # print("init time: " + str(end-start))
-    # start = time.process_time()
-    # ssm, labels = tds.getitem(0)
-    # end = time.process_time()
-    # print("get item time: " + str(end-start))
-    # print(ssm.shape)
+    print("init time: " + str(end-start))
+    start = time.process_time()
+    ssm, labels = tds.getitem(0)
+    end = time.process_time()
+    print("get item time: " + str(end-start))
+    print(ssm.shape)
 
-    # start = time.process_time()
-    # varArity = np.asarray(ssm.sum(axis=0)).flatten()
-    # end =  time.process_time()
-    # print('varArity compute time: ' + str(end-start))
+    start = time.process_time()
+    varArity = np.asarray(ssm.sum(axis=0)).flatten()
+    end =  time.process_time()
+    print('varArity compute time: ' + str(end-start))
 
-    # start = time.process_time()
-    # clauseArity = np.asarray(ssm.sum(axis=1)).flatten()
-    # end =  time.process_time()
-    # print('clauseArity compute time: ' + str(end-start))
+    start = time.process_time()
+    clauseArity = np.asarray(ssm.sum(axis=1)).flatten()
+    end =  time.process_time()
+    print('clauseArity compute time: ' + str(end-start))
 
-    dl = tds.getDataLoader(2, 0, 10000000, varvar=True)
+    dl = tds.getDataLoader(2, 20000000, 5000000)
     for i_batch, data in enumerate(dl):
         print(data)
 
