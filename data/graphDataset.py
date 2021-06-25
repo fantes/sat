@@ -12,7 +12,7 @@ from utils import *
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./", varvar = False, neg_as_link =False):
+    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./",  prefix=""):
         self.fname = filename
         self.cachesize = cachesize
         self.cache = {}
@@ -21,11 +21,25 @@ class GraphDataset(torch.utils.data.Dataset):
         self.self_supervised = self_supervised
         f = open(self.fname,'r')
         l = f.readline().strip().split()
-        self.nlabels = int(l[0])
+        self.nsamples = int(l[0])
         self.nclause = int(l[1])
         self.nvar = int(l[2])
-        self.neg_as_link = neg_as_link
-        self.varvar = not self.neg_as_link and varvar
+        cvt = l[3]
+        if cvt == "clause.var":
+            self.varvar = False
+        elif cvt == "var.var":
+            self.varvar = True
+        else:
+            raise RuntimeError("unknown graph type " + cvt)
+
+        nlt = l[4]
+        if nlt == "neg_as_link":
+            self.neg_as_link = True
+        elif nlt == "neg_as_var":
+            self.neg_as_link = False
+        else:
+            raise RuntimeError("unknown neg type " + nlt)
+
         self.permute_vars = permute_vars
         self.permute_clauses = not self.varvar and permute_clauses
         self.neg_clauses = not self.neg_as_link and  neg_clauses
@@ -34,8 +48,9 @@ class GraphDataset(torch.utils.data.Dataset):
         ll = f.readline()
         while ll:
             l = ll.strip().split()
-            labels = l[:self.nlabels]
-            graphfiles = l[self.nlabels:]
+            nlabels = int(l[0])
+            labels = [int(v) for v in l[1:nlabels+1]]
+            graphfiles = [prefix+g for g in l[nlabels+1:]]
             self.data.append({'labels':labels,'f':graphfiles})
             ll = f.readline()
 
@@ -142,28 +157,45 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset('./test_clausevar_negaslink/T102.2.1.graph', neg_clauses = False,  self_supervised = False, cachesize=0, varvar=False, neg_as_link = True)
+    tds = GraphDataset('./test_arup/1.graph',  self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
     ssm, labels = tds.getitem(0)
+    print("labels")
+    print(labels)
     end = time.process_time()
     print("get item time: " + str(end-start))
     print(ssm.shape)
 
-    start = time.process_time()
-    varArity = np.asarray(ssm.sum(axis=0)).flatten()
-    end =  time.process_time()
-    print('varArity compute time: ' + str(end-start))
+    ssm, labels = tds.getitem(1)
+    print("labels")
+    print(labels)
+    end = time.process_time()
+    print("get item time: " + str(end-start))
+    print(ssm.shape)
 
-    start = time.process_time()
-    clauseArity = np.asarray(ssm.sum(axis=1)).flatten()
-    end =  time.process_time()
-    print('clauseArity compute time: ' + str(end-start))
+    ssm, labels = tds.getitem(14)
+    print("labels")
+    print(labels)
+    end = time.process_time()
+    print("get item time: " + str(end-start))
+    print(ssm.shape)
 
-    dl = tds.getDataLoader(2, 20000000, 5000000)
-    for i_batch, data in enumerate(dl):
-        print(data)
+
+    # start = time.process_time()
+    # varArity = np.asarray(ssm.sum(axis=0)).flatten()
+    # end =  time.process_time()
+    # print('varArity compute time: ' + str(end-start))
+
+    # start = time.process_time()
+    # clauseArity = np.asarray(ssm.sum(axis=1)).flatten()
+    # end =  time.process_time()
+    # print('clauseArity compute time: ' + str(end-start))
+
+    # dl = tds.getDataLoader(2, 20000000, 5000000)
+    # for i_batch, data in enumerate(dl):
+    #     print(data)
 
 
 
