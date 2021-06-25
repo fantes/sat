@@ -222,7 +222,17 @@ def preprocess(varvar, neg_as_link, cnffile,arupfile, target_dir,nfiles, save_ar
     basename = os.path.basename(cnffile)
     noext = os.path.splitext(basename)[0]
     datafile = open(target_dir+"/"+noext+".graph","w")
-    datafile.write(str(len(data)) +" " +str(nclauses)+ " " + str(nvars) + "\n")
+    if varvar:
+        cvt = "var.var"
+    else:
+        cvt = "clause.var"
+
+    if neg_as_link:
+        nlt = "neg_as_link"
+    else:
+        nlt = "neg_as_var"
+
+    datafile.write(str(len(data)) +" " +str(nclauses)+ " " + str(nvars) + " " + cvt + " " + nlt+"\n")
     for d  in data:
         datafile.write(str(len(d[1])))
         for l in d[1]:
