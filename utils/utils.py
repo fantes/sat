@@ -2,7 +2,15 @@ import torch
 import scipy.sparse
 import numpy as np
 
-
+def conv_vindex(v, nvar, neg_as_link):
+    if neg_as_link:
+        if v<0:
+            return -v-1
+        return v-1
+    else:
+        if v<0:
+            return -v+nvar-1
+        return v-1
 
 
 def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
@@ -15,20 +23,20 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     big_mat = graphs[0].tocoo(copy=False)
     for g in graphs[1:]:
         if neg_as_link:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.int8)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short, requires_grad=False)
         else:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.bool)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short, requires_grad=False)
     if neg_as_link:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int8)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short, requires_grad=False)
     else:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool, requires_grad=False)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short, requires_grad=False)
     return big_tensor
 
 
 def build_graph_pooler(batch_size,varvar,nclause,nvar, maxclause,maxvar):
     blocks = []
     for i in range(batch_size):
-        blocks.append(np.mat(np.ones((1,maxclause+maxvar))))
+        qblocks.append(np.mat(np.ones((1,maxclause+maxvar))))
         if self.graph_pooling_type == "average":
             blocks[-1] = blocks[-1]/(nclause[i] + nvar[i])
     spgraphpooler = scipy.sparse.block_diag(blocks)
@@ -75,5 +83,6 @@ def postproc(data, maxclause,maxvar,varvar, graph_pool=False, neg_as_link = True
         graph_pooler = build_graph_pooler(batch_size, nclause, nvar, maxclause, maxvar)
     else:
         graph_pooler = None
+
 
     return batch_size, biggraph, clause_feat, var_feat, graph_pooler, label_batch

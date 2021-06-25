@@ -6,16 +6,9 @@ import scipy.sparse
 import numpy as np
 import pickle
 import tqdm
-
-def conv_vindex(v, nvar, neg_as_link):
-    if neg_as_link:
-        if v<0:
-            return -v-1
-        return v-1
-    else:
-        if v<0:
-            return -v+nvar-1
-        return v-1
+import sys
+sys.path.append("../utils/")
+from utils import *
 
 def find_num_clause(clause, smatrix,neg_as_link):
     smatrix.eliminate_zeros()
