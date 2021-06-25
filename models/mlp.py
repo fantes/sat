@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from graphNorm import GraphNorm
+from models.graphNorm import GraphNorm
 
 ###MLP with lienar output
 class MLP(nn.Module):
@@ -35,7 +35,7 @@ class MLP(nn.Module):
             self.linears = torch.nn.ModuleList()
             self.norms = torch.nn.ModuleList()
         
-            self.linears.append(nn.Linear(input_dim, hidden_dim))
+            self.linears.append(nn.Linear(input_dim, hidden_dim, dtype=torch.half))
             for layer in range(num_layers - 2):
                 self.linears.append(nn.Linear(hidden_dim, hidden_dim))
             self.linears.append(nn.Linear(hidden_dim, output_dim))

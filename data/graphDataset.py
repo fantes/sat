@@ -2,17 +2,16 @@ import torch
 import scipy.sparse
 import random
 import numpy as np
-import preprocess
 import time
 import sys
 sys.path.append("../utils/")
-from utils import *
+from utils.utils import *
 
 
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./",  prefix=""):
+    def __init__(self, filename, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./"):
         self.fname = filename
         self.cachesize = cachesize
         self.cache = {}
@@ -50,7 +49,7 @@ class GraphDataset(torch.utils.data.Dataset):
             l = ll.strip().split()
             nlabels = int(l[0])
             labels = [int(v) for v in l[1:nlabels+1]]
-            graphfiles = [prefix+g for g in l[nlabels+1:]]
+            graphfiles = l[nlabels+1:]
             self.data.append({'labels':labels,'f':graphfiles})
             ll = f.readline()
 
@@ -96,13 +95,22 @@ class GraphDataset(torch.utils.data.Dataset):
                 vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.nvar*2,self.nvar*2),dtype=bool)
                 res = vperMatrix * ssm * vperMatrix
 
+            labels = []
+            if self.neg_as_link:
+                for l in labels:
+                    if l < 0:
+                        labels.append(-varPermuted[-l])
+                    else:
+                        labels.append(varPermuted[l])
+            else:
+                l.append(varPermuted[conv_vindex(l,self.nvar,False)])
+
 
         if self.permute_clauses:
             clausesPermuted = np.random.permutation(list(range(self.nclause)))
             clausePerMatrix = scipy.sparse.csr_matrix((self.varClause,(self.clausesPerRows,clausesPermuted)),shape=(self.nclause,self.nclause),dtype=bool)
             res = clausePerMatrix *res
 
-        # do not forget to permute labels, if relevant
         return res, labels
 
     def addNegClauses(self,ssm):
@@ -145,7 +153,7 @@ class GraphDataset(torch.utils.data.Dataset):
         return self.__getitem__(idx)
 
 
-    def getDataLoader(self, batch_size,  maxclause, maxvar, varvar = True, graph_pool = False, num_workers=0):
+    def getDataLoader(self, batch_size,  maxclause, maxvar, varvar = True, graph_pool = False, num_workers=1):
         #dset = GraphDataset(filename, cachesize=cachesize)
         loader = torch.utils.data.DataLoader(self, batch_size= batch_size, shuffle=True, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link))
         return loader

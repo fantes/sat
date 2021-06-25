@@ -3,13 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import time
 import sys
-sys.path.append("models/")
-sys.path.append("../data/")
-sys.path.append("../utils/")
+sys.path.append("../")
+from data.graphDataset import *
 from utils import *
-from graphDataset import *
-from graphNorm import GraphNorm
-from mlp import MLP
+import models.graphNorm
+from models.mlp import MLP
+from models.graphNorm import GraphNorm
 
 import numpy as np
 import scipy.sparse
@@ -106,7 +105,7 @@ class GraphCNNSAT(nn.Module):
 
         if self.lfa:
             self.var_lfa = nn.Linear(self.maxvar, self.maxvar)
-            if not varvar:
+            if not self.varvar:
                 self.clause_lfa = nn.Linear(self.maxclause, self.maxclause)
 
 
@@ -160,8 +159,8 @@ class GraphCNNSAT(nn.Module):
                 var_pooled = torch.mul(var_pooled, die2)
 
             else:
-                clause_pooled = torch.sparse.mm(biggraph, h_var.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
-                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1), h_clause.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
+                clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
+                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
 
             if self.neighbor_pooling_type == "average": #should be subsumed by PGSO
                 clause_pooled = clause_pooled/degree_clauses.expand_as(clause_pooled)
@@ -202,7 +201,6 @@ class GraphCNNSAT(nn.Module):
 
 
     def forward(self, batch_size, biggraph, clause_feat, var_feat, graph_pooler):
-
         if self.random > 0:
             for r in range(self.random):
                 if not self.varvar:
@@ -273,6 +271,7 @@ class GraphCNNSAT(nn.Module):
 
 
 def main():
+
     varvar = False
     model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
     model.half()
