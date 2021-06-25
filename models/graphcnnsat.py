@@ -7,7 +7,7 @@ sys.path.append("models/")
 sys.path.append("../data/")
 sys.path.append("../utils/")
 from utils import *
-from graphDataset import GraphDataset
+from graphDataset import *
 from graphNorm import GraphNorm
 from mlp import MLP
 
@@ -276,7 +276,7 @@ def main():
     varvar = False
     model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
     model.half()
-    tds = GraphDataset('../data/test_clausevar_negaslink/T102.2.1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/", neg_as_link=True)
+    tds = GraphDataset('../data/test_arup/1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     m,labels = tds.getitem(0)
     batch_graph=[m]
 
