@@ -290,7 +290,7 @@ def main():
     var_feat = var_feat.to(device)
 
     #TODO : precompute degrees
-    biggraph = big_tensor_from_batch_graph(batch_graph,varvar, model.maxclause,model.maxvar,neg_as_link=True).to(torch.float).to(cpu)
+    biggraph = big_tensor_from_batch_graph(batch_graph,varvar, model.maxclause,model.maxvar,neg_as_link=True).to(torch.float).to(device)
 
     model.to(device)
 

@@ -21,7 +21,7 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     if neg_as_link:
         big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.int8)
     else:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.bool, requires_grad=False)
     return big_tensor
 
 
