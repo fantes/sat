@@ -123,10 +123,10 @@ class GraphCNNSAT(nn.Module):
             if self.varvar:
                 degrees = torch.sparse.mm(biggraph, torch.ones((biggraph.shape[0], 1)).to(biggraph.device)).to(torch.short).to(h_var.device)
             else:
-                tempones = torch.ones((biggraph.shape[1], 1),device=biggraph.device)
-                degree_clauses = torch.sparse.mm(biggraph, tempones).to(torch.short).to(h_var.device)
+                tempones = torch.ones((biggraph.shape[1], 1),device=biggraph.device, dtype=torch.float)
+                degree_clauses = torch.sparse.mm(biggraph.to(torch.float), tempones).to(torch.short).to(h_var.device)
                 tempones = torch.ones((biggraph.shape[0], 1),device=biggraph.device)
-                degree_vars = torch.sparse.mm(torch.transpose(biggraph,0,1), tempones).to(torch.short).to(h_var.device)
+                degree_vars = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), tempones).to(torch.short).to(h_var.device)
                 degrees = torch.cat([degree_clauses, degree_vars])
 
         if self.mPGSO:
@@ -148,13 +148,13 @@ class GraphCNNSAT(nn.Module):
             if self.PGSO:
                 dje3 = torch.pow(degree_vars * la,le3)
                 h_var_dje3 = torch.mul(h_var,dje3)
-                clause_pooled = torch.sparse.mm(biggraph, h_var_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
+                clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
                 die2 = torch.pow(degree_clauses,le2.to(torch.float))
                 clause_pooled = torch.mul(clause_pooled, die2)
 
                 dje3 = torch.pow(degree_clauses,le3.to(torch.float))
                 h_clause_dje3 = torch.mul(h_clause,dje3)
-                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1), h_clause_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
+                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
                 die2 = torch.pow(degree_vars * la ,le2.to(torch.float))
                 var_pooled = torch.mul(var_pooled, die2)
 

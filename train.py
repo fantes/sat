@@ -49,8 +49,7 @@ def main():
                         help='goal is var classification (default: True)')
     parser.add_argument('--clause_classif', type=bool, default=False,
                         help='goal is clause classification (default: False) can be combined with var classif , both false means whole graph classif')
-    parser.add_argument('--pgso', type=bool, default=False,
-                        help='use pgso')
+    parser.add_argument('--pgso', action='store_true',  help='use pgso')
     parser.add_argument('--mpgso', type=bool, default=False,
                         help='use mpgso')
     parser.add_argument('--graph_norm', type=bool, default=True,
