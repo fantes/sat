@@ -17,6 +17,48 @@ def conv_vindex(v, nvar, neg_as_link):
             return -v+nvar-1
         return v-1
 
+def find_num_clause(clause, smatrix,neg_as_link):
+    smatrix.eliminate_zeros()
+    for ic in smatrix.shape[0]:
+        c = smatrix.getrow(ic)
+        if c.nnz != len(clause):
+            continue # different number of element, go to next clause
+        ok = True
+        for i in c.indices: # indices in current clause of the matrix where non zero element
+            if not ok:
+                break
+            converted_clause = [conv_vindex(v,nvars,neg_as_link) for v in clause]
+            if not i in converted_clause:
+                ok = False
+                break
+            if neg_as_link: # also check sign
+                for vari in range(len(clause)):
+                    if smatrix[ic, converted_clause[vari]] != sign(clause[vari]):
+                        ok = False
+                        break
+        if ok:
+            return ic
+    return None
+
+
+
+def remove_clause(clause, smatrix, varvar,neg_as_link,nvars):
+    if varvar:
+        clause = [conv_vindex(v,nvars,neg_as_link) for v in clause]
+        # minus one in number of links
+        for v1 in range(0, len(clause)):
+            for v2 in range(v1+1, len(clause)):
+                smatrix[clause[v1],clause[v2]] -= 1
+    else:
+        nc = find_num_clause(clause,smatrix,neg_as_link)
+        if nc is None:
+            raise RuntimeError("could not find clause " + str(clause))
+        clause = [conv_vindex(v,nvars,neg_as_link) for v in clause]
+        for v in clause:
+            smatrix[nc,v] = 0
+    return smatrix
+
+
 def get_smatrix(varvar,neg_as_link,nclauses,nvars,v,i0,i1):
     if not varvar:
         if neg_as_link:
@@ -27,7 +69,7 @@ def get_smatrix(varvar,neg_as_link,nclauses,nvars,v,i0,i1):
                                               dtype=np.bool,shape=(nclauses,nvars*2))
     else:
         smatrix = scipy.sparse.csr_matrix((np.asarray(v),(np.asarray(i0),np.asarray(i1))),
-                                          dtype=np.bool,shape=(nvars*2,nvars*2))
+                                          dtype=np.int,shape=(nvars*2,nvars*2))
     return smatrix
 
 
@@ -63,7 +105,7 @@ def get_indices_values_from_clause(clause,varvar,neg_as_link, offsetnc):
                 else:
                     indices0.append(i2)
                     indices1.append(i1)
-                values.append(True)
+                values.append(1)
     return indices0, indices1, values
 
 
@@ -178,6 +220,7 @@ def process_arup(arupfile, target_dir, nvars,varvar,neg_as_link):
                 continue
             if l[0] == "d":
                 print("found delete:" + str(l))
+                smatrix = remove_clause([int(v) for v in l[:-1]],smatrix,varvar,neg_as_link, nvars)
                 continue
             #new clause added:
             strvar = l[:-1]
