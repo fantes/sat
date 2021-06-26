@@ -12,6 +12,21 @@ def conv_vindex(v, nvar, neg_as_link):
             return -v+nvar-1
         return v-1
 
+def convert_labels(labels, neg_as_link, maxvar, device):
+    target = torch.zeros((len(labels),maxvar), dtype=torch.half, device=device)
+    for count, b in enumerate(labels):
+        # batch
+        for l in b:
+            #labels in batch
+            if l < 0:
+                target[count, conv_vindex(l, maxvar, neg_as_link)] = 1
+            else:
+                target[count, conv_vindex(l,maxvar,neg_as_link)] = 2
+    return target
+
+
+
+
 
 def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     #batch graph is maxclause*batch_size x maxvar*batch_size
