@@ -247,11 +247,11 @@ class GraphCNNSAT(nn.Module):
         #below reshape to usual batch form, ie batch index is first dim
         if self.var_classification:
             if self.clause_classification:
-                return self.fc1(torch.cat([torch.reshape(h_clause, (batch_size, -1)),
-                                           torch.reshape(h_var,(batch_size, -1))],axis=1))
-            return torch.reshape(self.fc1(h_var), (batch_size, -1))
+                return self.fc1(torch.cat([torch.reshape(h_clause, (batch_size, -1, self.output_dim)),
+                                           torch.reshape(h_var,(batch_size, -1, self.output_dim))],axis=1))
+            return torch.reshape(self.fc1(h_var), (batch_size, -1, self.output_dim))
         if self.clause_classification:
-            return torch.reshape(self.fc1(h_clause), (batch_size, -1))
+            return torch.reshape(self.fc1(h_clause), (batch_size, -1, self.output_dim))
 
         #below graph_embedding only
         score_over_layer = 0
