@@ -244,12 +244,14 @@ class GraphCNNSAT(nn.Module):
                     clause_hidden_rep.append(h_clause)
                 var_hidden_rep.append(h_var)
 
+        #below reshape to usual batch form, ie batch index is first dim
         if self.var_classification:
             if self.clause_classification:
-                return torch.softmax(self.fc1(torch.cat([h_clause,h_var],axis=0)), 1)
-            return torch.softmax(self.fc1(h_var), 1)
+                return self.fc1(torch.cat([torch.reshape(h_clause, (batch_size, -1)),
+                                           torch.reshape(h_var,(batch_size, -1))],axis=1))
+            return torch.reshape(self.fc1(h_var), (batch_size, -1))
         if self.clause_classification:
-            return torch.softmax(self.fc1(h_clause), 1)
+            return torch.reshape(self.fc1(h_clause), (batch_size, -1))
 
         #below graph_embedding only
         score_over_layer = 0
@@ -297,6 +299,7 @@ def main():
 
     start  = time.process_time()
     p = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
+
     print("forward time " +str(time.process_time()-start))
     loss_fn = nn.L1Loss()
     loss = loss_fn(p,torch.zeros_like(p))
