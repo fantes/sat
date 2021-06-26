@@ -17,9 +17,7 @@ def train(model,dataset,batch_size=1, num_workers=0, graph_classif = False, devi
 
     for i_batch, sample_batched in enumerate(dl):
         batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
-        print("labels: " + str(labels))
         target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
-        print("target: " + str(target.to(torch.device("cpu"))))
         biggraph = biggraph.to(device)
         clause_feat = clause_feat.to(device)
         var_feat = var_feat.to(device)

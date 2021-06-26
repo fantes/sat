@@ -13,7 +13,7 @@ def conv_vindex(v, nvar, neg_as_link):
         return v-1
 
 def convert_labels(labels, neg_as_link, maxvar, device):
-    target = torch.zeros((len(labels),maxvar), dtype=torch.half, device=device)
+    target = torch.zeros((len(labels),maxvar), dtype=torch.long, device=device)
     for count, b in enumerate(labels):
         # batch
         for l in b:
