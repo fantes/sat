@@ -13,7 +13,8 @@ def train(model,dataset,test_split, max_epoch, batch_size=1, print_inter = 10, t
 
     train_dl, test_dl, weights = dataset.getDataLoaders(batch_size, test_split, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
 
-    optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
+    #optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
+    optimizer = torch.optim.SGD(model.parameters(),lr=0.01)
     # class 0 is much more present then others
     class_weights = torch.tensor(weights).to(device)
     criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
@@ -43,17 +44,16 @@ def train(model,dataset,test_split, max_epoch, batch_size=1, print_inter = 10, t
 
             running_loss += loss.item()
             if i_batch % print_inter == print_inter-1:    # 2000 / 1999 print every 2000 mini-batches
-                print('[%d, %5d] loss: %.10f' %  (epoch + 1, i_batch * batch_size + 1, running_loss / print_inter))
+                print('[%d, %5d] loss: %.10f' %  (epoch + 1, (i_batch  + 1)*batch_size, running_loss / print_inter))
                 running_loss = 0.0
 
-        # test after every epoch
-        correct = 0
-        total = 0
-        # since we're not training, we don't need to calculate the gradients for our outputs
         with torch.no_grad():
             precision = []
+            precision_nophase = []
             recall = []
+            recall_nophase = []
             f1 = []
+            f1_nophase = []
             for sample_batched in train_dl:
                 batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
                 target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
@@ -71,23 +71,43 @@ def train(model,dataset,test_split, max_epoch, batch_size=1, print_inter = 10, t
                             preds.append(i+1)
 
                     tp = 0
-                    for p in preds:
-                        if p in labels[bi]:
+                    tp_nophase = 0
+                    for p in labels[bi]:
+                        if p in preds or -p in preds:
+                            tp_nophase += 1
+                        if p in preds:
                             tp += 1
                     if len(preds) == 0:
                         local_precision = 0
+                        local_precision_nophase= 0
                     else:
                         local_precision = tp/len(preds)
+                        local_precision_nophase = tp_nophase/len(preds)
+
                     precision.append(local_precision)
+                    precision_nophase.append(local_precision_nophase)
                     local_recall = tp / len(labels[bi])
+                    local_recall_nophase = tp_nophase / len(labels[bi])
                     recall.append(local_recall)
+                    recall_nophase.append(local_recall_nophase)
+
                     if (local_precision + local_recall) == 0:
                         f1.append(0.0)
                     else:
                         f1.append(2 * local_precision * local_recall / (local_precision+local_recall))
+
+                    if (local_precision_nophase + local_recall_nophase) == 0:
+                        f1_nophase.append(0.0)
+                    else:
+                        f1_nophase.append(2 * local_precision_nophase * local_recall_nophase / (local_precision_nophase+local_recall_nophase))
+
+
             print("precision: " + str(sum(precision)/len(precision)))
             print("recall: " + str(sum(recall)/len(recall)))
             print("f1: " + str(sum(f1)/len(f1)))
+            print("precision_nophase: " + str(sum(precision_nophase)/len(precision_nophase)))
+            print("recall_nophase: " + str(sum(recall_nophase)/len(recall_nophase)))
+            print("f1_nophase: " + str(sum(f1_nophase)/len(f1_nophase)))
                     # print("target: " + str(labels[bi]))
                     # print("pred: " + str(preds))
 
@@ -132,13 +152,14 @@ def main():
     parser.add_argument('--epoch', type=int, default = 10, help='number of epoch')
     parser.add_argument('--test_split', default = 0.1, help='test split')
     parser.add_argument('--batch_size', type = int, default = 1, help='batch_size')
+    parser.add_argument('--permute_vars', action='store_true', help='do random permutation of vars')
 
     args = parser.parse_args()
 
     model = GraphCNNSAT(args.num_layers, args.num_mlp_layers,  args.hidden_dim, args.output_dim, args.final_dropout, args.random, args.maxclause, args.maxvar, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
     model.to(torch.device("cuda:0"))
 
-    tds = GraphDataset(glob.glob(args.graphfile), cachesize=0, path_prefix=args.datasetpath)
+    tds = GraphDataset(glob.glob(args.graphfile), args.permute_vars, cachesize=0, path_prefix=args.datasetpath)
 
     train(model, tds, args.test_split,  args.epoch, args.batch_size)
 
