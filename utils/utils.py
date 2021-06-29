@@ -38,13 +38,13 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     big_mat = graphs[0].tocoo(copy=False)
     for g in graphs[1:]:
         if neg_as_link:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short, requires_grad=False)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short)
         else:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short, requires_grad=False)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short)
     if neg_as_link:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short, requires_grad=False)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short)
     else:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short, requires_grad=False)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short)
     return big_tensor
 
 
