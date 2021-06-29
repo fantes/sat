@@ -257,7 +257,7 @@ class GraphCNNSAT(nn.Module):
             h_var = torch.reshape(torch.transpose(lin_var, 1,2),(batch_size*self.maxvar,-1))
 
             if not self.varvar:
-                batched_clause = torch.reshape(h_var,(batch_size, self.maxclause, -1))
+                batched_clause = torch.reshape(h_clause,(batch_size, self.maxclause, -1))
                 lin_clause = self.clause_lfa(torch.transpose(batched_clause,1,2))
                 h_clause = torch.reshape(torch.transpose(lin_clause, 1,2),(batch_size*self.maxclause,-1))
             if self.graph_embedding:
