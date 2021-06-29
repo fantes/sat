@@ -7,17 +7,16 @@ import glob
 
 
 
-def train(model,dataset,test_split, max_epoch, batch_size=1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
+def train(model,dataset,test_split, max_epoch, batch_size=1, print_inter = 10, test_inter = 1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
     model.to(device)
     model.train()
 
-    train_dl, test_dl = dataset.getDataLoaders(batch_size, test_split, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
+    train_dl, test_dl, weights = dataset.getDataLoaders(batch_size, test_split, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
 
     optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
-    criterion = torch.nn.CrossEntropyLoss()
-
-
-    m,labels = dataset.getitem(0)
+    # class 0 is much more present then others
+    class_weights = torch.tensor(weights).to(device)
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
     running_loss = 0.0
 
@@ -43,9 +42,54 @@ def train(model,dataset,test_split, max_epoch, batch_size=1, num_workers=0, grap
             optimizer.step()
 
             running_loss += loss.item()
-            if i_batch % 1 == 0:    # 2000 / 1999 print every 2000 mini-batches
-                print('[%d, %5d] loss: %.10f' %  (epoch + 1, i_batch + 1, running_loss / 2000))
+            if i_batch % print_inter == print_inter-1:    # 2000 / 1999 print every 2000 mini-batches
+                print('[%d, %5d] loss: %.10f' %  (epoch + 1, i_batch * batch_size + 1, running_loss / print_inter))
                 running_loss = 0.0
+
+        # test after every epoch
+        correct = 0
+        total = 0
+        # since we're not training, we don't need to calculate the gradients for our outputs
+        with torch.no_grad():
+            precision = []
+            recall = []
+            f1 = []
+            for sample_batched in train_dl:
+                batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
+                target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
+                biggraph = biggraph.to(device)
+                clause_feat = clause_feat.to(device)
+                var_feat = var_feat.to(device)
+                out = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
+                res = torch.argmax(out,dim=2)
+                for bi in range(len(labels)):
+                    preds = []
+                    for i,r in enumerate(res[bi]):
+                        if r == 1:
+                            preds.append(-(i+1))
+                        elif r == 2:
+                            preds.append(i+1)
+
+                    tp = 0
+                    for p in preds:
+                        if p in labels[bi]:
+                            tp += 1
+                    if len(preds) == 0:
+                        local_precision = 0
+                    else:
+                        local_precision = tp/len(preds)
+                    precision.append(local_precision)
+                    local_recall = tp / len(labels[bi])
+                    recall.append(local_recall)
+                    if (local_precision + local_recall) == 0:
+                        f1.append(0.0)
+                    else:
+                        f1.append(2 * local_precision * local_recall / (local_precision+local_recall))
+            print("precision: " + str(sum(precision)/len(precision)))
+            print("recall: " + str(sum(recall)/len(recall)))
+            print("f1: " + str(sum(f1)/len(f1)))
+                    # print("target: " + str(labels[bi]))
+                    # print("pred: " + str(preds))
 
 
 
@@ -53,7 +97,7 @@ def main():
     parser = argparse.ArgumentParser(description='sat trainer')
     parser.add_argument('--num_layers', type=int, default=10,
                                 help='number of layers (neighborhood depth)  (default: 10)')
-    parser.add_argument('--num_mlp_layers', type=int, default=2,
+    parser.add_argument('--num_mlp_layers', type=int, default=3,
                         help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
     parser.add_argument('--hidden_dim', type=int, default=8,
                         help='number of hidden units (default: 8)')
@@ -87,6 +131,7 @@ def main():
     parser.add_argument('--datasetpath', type=str, help='prefix of partial graphs')
     parser.add_argument('--epoch', type=int, default = 10, help='number of epoch')
     parser.add_argument('--test_split', default = 0.1, help='test split')
+    parser.add_argument('--batch_size', type = int, default = 1, help='batch_size')
 
     args = parser.parse_args()
 
@@ -95,7 +140,7 @@ def main():
 
     tds = GraphDataset(glob.glob(args.graphfile), cachesize=0, path_prefix=args.datasetpath)
 
-    train(model, tds, args.test_split,  args.epoch)
+    train(model, tds, args.test_split,  args.epoch, args.batch_size)
 
 
 if __name__ == '__main__':
