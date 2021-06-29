@@ -153,10 +153,20 @@ class GraphDataset(torch.utils.data.Dataset):
         return self.__getitem__(idx)
 
 
-    def getDataLoader(self, batch_size,  maxclause, maxvar, varvar = True, graph_pool = False, num_workers=1):
+    def getDataLoaders(self, batch_size, test_split,  maxclause, maxvar, varvar = True, graph_pool = False, num_workers=1):
         #dset = GraphDataset(filename, cachesize=cachesize)
-        loader = torch.utils.data.DataLoader(self, batch_size= batch_size, shuffle=True, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link))
-        return loader
+        dataset_size = len(self.data)
+        indices =list(range(dataset_size))
+        split = int(np.floor(test_split*dataset_size))
+        np.random.shuffle(indices)
+        train_indices, test_indices = indices[split:], indices[:split]
+        train_sampler = torch.utils.data.SubsetRandomSampler(train_indices)
+        test_sampler = torch.utils.data.SubsetRandomSampler(test_indices)
+
+        train_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = train_sampler)
+
+        test_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = test_sampler)
+        return train_loader, test_loader
 
 
 def main():

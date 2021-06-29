@@ -7,11 +7,11 @@ from data.graphDataset import *
 
 
 
-def train(model,dataset,max_epoch, batch_size=1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
+def train(model,dataset,test_split, max_epoch, batch_size=1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
     model.to(device)
     model.train()
 
-    dl = dataset.getDataLoader(batch_size, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
+    train_dl, test_dl = dataset.getDataLoaders(batch_size, test_split, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
 
     optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
     criterion = torch.nn.CrossEntropyLoss()
@@ -23,7 +23,7 @@ def train(model,dataset,max_epoch, batch_size=1, num_workers=0, graph_classif = 
 
     for epoch in range(0, max_epoch):
 
-        for i_batch, sample_batched in enumerate(dl):
+        for i_batch, sample_batched in enumerate(train_dl):
             batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
             target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
             biggraph = biggraph.to(device)
@@ -80,12 +80,13 @@ def main():
     parser.add_argument('--neighbor_pooling_type', type=str, default="sum", choices=["sum", "average"],                        help='Pooling for over neighboring nodes: sum, average')
     parser.add_argument('--graph_pooling_type', type=str, default="sum", choices=["sum", "average"],
                         help='Pooling for over nodes in a graph: sum or average')
-    parser.add_argument('--lfa', type = bool, default = False, help='weither to use lfa')
+    parser.add_argument('--lfa', action = 'store_true', help='weither to use lfa')
     parser.add_argument('--device', type=int, default=0,
                         help='GPU id (default:0)')
     parser.add_argument('--graphfile', type=str, help='graph file as obtained by preprocess.py')
     parser.add_argument('--datasetpath', type=str, help='prefix of partial graphs')
     parser.add_argument('--epoch', type=int, default = 10, help='number of epoch')
+    parser.add_argument('--test_split', default = 0.1, help='test split')
 
     args = parser.parse_args()
 
@@ -94,7 +95,7 @@ def main():
 
     tds = GraphDataset(args.graphfile, cachesize=0, path_prefix=args.datasetpath)
 
-    train(model, tds, args.epoch)
+    train(model, tds, args.test_split,  args.epoch)
 
 
 if __name__ == '__main__':
