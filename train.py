@@ -2,7 +2,7 @@ import argparse
 from models.graphcnnsat import *
 from utils.utils import *
 from data.graphDataset import *
-
+import glob
 
 
 
@@ -63,9 +63,9 @@ def main():
                         help='final layer dropout for graph embedding (default: 0.5)')
     parser.add_argument('--random', type=int, default=1,
                         help='number of random features (default: 1)')
-    parser.add_argument('--maxclause', type=int, default=2000,
+    parser.add_argument('--maxclause', type=int, default=6000,
                         help='max number of clauses (default: 20M)')
-    parser.add_argument('--maxvar', type=int, default=1000,
+    parser.add_argument('--maxvar', type=int, default=2000,
                         help='max number of vars (default: 5M)')
     parser.add_argument('--graph_type', type=str, default="clause.var",
                         help='graph_type in clause.var|var.var')
@@ -93,7 +93,7 @@ def main():
     model = GraphCNNSAT(args.num_layers, args.num_mlp_layers,  args.hidden_dim, args.output_dim, args.final_dropout, args.random, args.maxclause, args.maxvar, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
     model.to(torch.device("cuda:0"))
 
-    tds = GraphDataset(args.graphfile, cachesize=0, path_prefix=args.datasetpath)
+    tds = GraphDataset(glob.glob(args.graphfile), cachesize=0, path_prefix=args.datasetpath)
 
     train(model, tds, args.test_split,  args.epoch)
 
