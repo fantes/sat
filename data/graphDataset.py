@@ -22,6 +22,7 @@ class GraphDataset(torch.utils.data.Dataset):
         self.nclause = []
         self.nvar = []
         self.varPermRows = []
+        self.totalNLabels = 0
         findex = 0
 
         for findex, filename in enumerate(filenames):
@@ -60,6 +61,7 @@ class GraphDataset(torch.utils.data.Dataset):
                 l = ll.strip().split()
                 nlabels = int(l[0])
                 labels = [int(v) for v in l[1:nlabels+1]]
+                self.totalNLabels += len(labels)
                 graphfiles = l[nlabels+1:]
                 self.data.append({'labels':labels,'f':graphfiles,'id':findex})
                 ll = f.readline()
@@ -86,6 +88,8 @@ class GraphDataset(torch.utils.data.Dataset):
                     self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.nvar*2),dtype=bool))
 
         print("total number of samples: " + str(sum(self.nsamples)))
+        print("average number of labels: " + str(self.totalNLabels/sum(self.nsamples)))
+
 
 
     def __len__(self):
@@ -179,7 +183,13 @@ class GraphDataset(torch.utils.data.Dataset):
         train_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = train_sampler)
 
         test_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = test_sampler)
-        return train_loader, test_loader
+
+        anl = self.totalNLabels/sum(self.nsamples)
+        print("average numeber of labels: " + str(anl))
+        print("average number of vars: " + str((sum(self.nvar)/len(self.nvar))))
+        zero_weight = anl/(sum(self.nvar)/len(self.nvar))
+        weights = [zero_weight,(1-zero_weight)/2,(1-zero_weight)/2]
+        return train_loader, test_loader, weights
 
 
 def main():
