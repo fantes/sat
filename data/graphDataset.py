@@ -22,6 +22,7 @@ class GraphDataset(torch.utils.data.Dataset):
         self.nclause = []
         self.nvar = []
         self.varPermRows = []
+        self.varData = []
         self.totalNLabels = 0
         findex = 0
 
@@ -67,12 +68,18 @@ class GraphDataset(torch.utils.data.Dataset):
                 ll = f.readline()
 
             if self.permute_vars:
-                self.varPermRows.append(list(range(self.nvar[findex]*2)))
-                self.varData.append([True]*(self.nvar[findex]*2))
+                self.varPermRows.append(list(range(self.nvar[findex])))
+                if self.neg_as_link:
+                    self.varData.append([1]*(self.nvar[findex]))
+                else:
+                    self.varData.append([True]*(self.nvar[findex]))
 
             if self.permute_clauses:
                 self.clausesPerRows.append(list(range(self.nclause[findex])))
-                self.varClause.append([True]*self.nclause[findex])
+                if self.neg_as_link:
+                    self.varClause.append([1]*self.nclause[findex])
+                else:
+                    self.varClause.append([True]*self.nclause[findex])
 
             if self.neg_clauses:
                 if self.varvar:
@@ -97,6 +104,7 @@ class GraphDataset(torch.utils.data.Dataset):
 
     def mpermute(self,ssm, labels, pbid):
         res = ssm
+        new_labels = []
         if self.permute_vars:
             if self.neg_as_link:
                 varPermuted = np.random.permutation(list(range(self.nvar[pbid])))
@@ -104,7 +112,7 @@ class GraphDataset(torch.utils.data.Dataset):
                 varPermuted = np.random.permutation(list(range(self.nvar[pbid]*2)))
             if not self.varvar:
                 if self.neg_as_link:
-                    vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid],self.nvar[pbid]),dtype=byte)
+                    vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid],self.nvar[pbid]),dtype=np.byte)
                 else:
                     vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid]*2,self.nvar[pbid]*2),dtype=bool)
                 res =  ssm * vperMatrix
@@ -112,15 +120,17 @@ class GraphDataset(torch.utils.data.Dataset):
                 vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid]*2,self.nvar[pbid]*2),dtype=bool)
                 res = vperMatrix * ssm * vperMatrix
 
-            labels = []
-            if self.neg_as_link:
-                for l in labels:
+            for l in labels:
+                if self.neg_as_link:
                     if l < 0:
-                        labels.append(-varPermuted[-l])
+                        new_labels.append(-varPermuted[-l-1]+1)
                     else:
-                        labels.append(varPermuted[l])
-            else:
-                l.append(varPermuted[conv_vindex(l,self.nvar[pbid],False)])
+                        new_labels.append(varPermuted[l-1]+1)
+                else:
+                    new_labels.append(varPermuted[conv_vindex(l,self.nvar[pbid],False)])
+        else:
+            new_labels = labels
+
 
 
         if self.permute_clauses:
@@ -128,7 +138,8 @@ class GraphDataset(torch.utils.data.Dataset):
             clausePerMatrix = scipy.sparse.csr_matrix((self.varClause[pbid],(self.clausesPerRows[pbid],clausesPermuted)),shape=(self.nclause[pbid],self.nclause[pbid]),dtype=bool)
             res = clausePerMatrix *res
 
-        return res, labels
+
+        return res, new_labels
 
     def addNegClauses(self,ssm,pbid):
         if self.neg_as_link:
