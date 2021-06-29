@@ -76,7 +76,7 @@ def main():
     parser.add_argument('--pgso', action='store_true',  help='use pgso')
     parser.add_argument('--mpgso', action='store_true',  help='use mpgso')
     parser.add_argument('--graph_norm', type=bool, default=True,
-                        help='use graph normlization')
+                        help='use graph normalization')
     parser.add_argument('--neighbor_pooling_type', type=str, default="sum", choices=["sum", "average"],                        help='Pooling for over neighboring nodes: sum, average')
     parser.add_argument('--graph_pooling_type', type=str, default="sum", choices=["sum", "average"],
                         help='Pooling for over nodes in a graph: sum or average')

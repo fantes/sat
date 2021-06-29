@@ -25,7 +25,7 @@ class GraphCNNSAT(nn.Module):
         self.random = random
         self.input_dim = 1 # arities
 
-        self.PGSO = PGSO
+        self.PGSO = PGSO and not mPGSO
         self.mPGSO = mPGSO
 
         self.graph_embedding = graph_embedding
@@ -57,16 +57,17 @@ class GraphCNNSAT(nn.Module):
 
         self.graph_pooling_type = graph_pooling_type
 
-        self.eps = nn.Parameter(torch.ones(self.num_layers-1))
+        self.eps = nn.Parameter(torch.ones(self.num_layers))
         if mPGSO:
-            self.a = nn.Parameter(torch.ones(self.num_layers-1))
-            self.m1 = nn.Parameter(torch.ones(self.num_layers-1))
-            self.m2 = nn.Parameter(torch.ones(self.num_layers-1))
-            self.m3 = nn.Parameter(torch.ones(self.num_layers-1))
-            self.e1 = nn.Parameter(torch.ones(self.num_layers-1))
-            self.e2 = nn.Parameter(torch.ones(self.num_layers-1))
-            self.e3 = nn.Parameter(torch.ones(self.num_layers-1))
-        elif PGSO:
+            self.a = nn.Parameter(torch.ones(self.num_layers))
+            self.m1 = nn.Parameter(torch.ones(self.num_layers))
+            self.m2 = nn.Parameter(torch.ones(self.num_layers))
+            self.m3 = nn.Parameter(torch.ones(self.num_layers))
+            self.e1 = nn.Parameter(torch.ones(self.num_layers))
+            self.e2 = nn.Parameter(torch.ones(self.num_layers))
+            self.e3 = nn.Parameter(torch.ones(self.num_layers))
+
+        if PGSO:
             self.a = nn.Parameter(torch.ones(1))
             self.m1 = nn.Parameter(torch.ones(1))
             self.m2 = nn.Parameter(torch.ones(1))
@@ -121,7 +122,7 @@ class GraphCNNSAT(nn.Module):
 
         # PGSO see https://arxiv.org/abs/2101.10050 (page 5)
 
-        if self.neighbor_pooling_type == "average" or self.PGSO:
+        if self.neighbor_pooling_type == "average" or self.PGSO or self.mPGSO:
             if self.varvar:
                 degrees = torch.sparse.mm(biggraph, torch.ones((biggraph.shape[0], 1)).to(biggraph.device)).to(torch.short).to(h_var.device)
             else:
@@ -131,9 +132,10 @@ class GraphCNNSAT(nn.Module):
                 degree_vars = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), tempones).to(torch.short).to(h_var.device)
                 degrees = torch.cat([degree_clauses, degree_vars])
 
+
         if self.mPGSO:
             lindex = layer
-        elif self.PGSO:
+        if self.PGSO:
             lindex = 0
         if self.PGSO or self.mPGSO:
             la = self.a[lindex]
@@ -144,20 +146,23 @@ class GraphCNNSAT(nn.Module):
             lm2 = self.m2[lindex]
             lm3 = self.m3[lindex]
 
-
         if not self.varvar: #ie graph is clause x var
 
-            if self.PGSO:
-                dje3 = torch.pow(degree_vars * la,le3)
-                h_var_dje3 = torch.mul(h_var,dje3)
+            if self.PGSO or self.mPGSO:
+                varones = torch.ones((biggraph.shape[1]), dtype = torch.float, device = h_var.device)
+                dje3 = torch.pow(degree_vars.squeeze(1) + varones * la,le3)
+                h_var_dje3 = torch.mul(h_var,dje3.unsqueeze(1).expand_as(h_var))
                 clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
-                die2 = torch.pow(degree_clauses,le2.to(torch.float))
+
+                die2 = torch.pow(degree_clauses,le2)
                 clause_pooled = torch.mul(clause_pooled, die2)
 
-                dje3 = torch.pow(degree_clauses,le3.to(torch.float))
-                h_clause_dje3 = torch.mul(h_clause,dje3)
+                clauseones = torch.ones((biggraph.shape[0]), dtype = torch.float,
+                                         device = h_var.device)
+                dje3 = torch.pow(degree_clauses.squeeze(1) + clauseones * la,le3)
+                h_clause_dje3 = torch.mul(h_clause,dje3.unsqueeze(1).expand_as(h_clause))
                 var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause_dje3.to(torch.float).to(biggraph.device)).to(h_var.device)
-                die2 = torch.pow(degree_vars * la ,le2.to(torch.float))
+                die2 = torch.pow(degree_vars,le2)
                 var_pooled = torch.mul(var_pooled, die2)
 
             else:
@@ -172,8 +177,9 @@ class GraphCNNSAT(nn.Module):
         else:
             h = h_var
 
-            if self.PGSO:
-                dje3 = torch.pow(degrees * la, le3)
+            if self.PGSO or self.mPGSO:
+                varones = torch.ones((biggraph.shape[0]), dtype = torch.float, device = h_var.device)
+                dje3 = torch.pow(degrees + varones * la, le3)
                 h_dje3 = torch.mul(h,dje3)
                 pooled = torch.sparse.mm(biggraph, h_dje3.to(biggraph.device)).to(h_var.device)
                 die2 = torch.pow(degrees, le2)
@@ -189,7 +195,7 @@ class GraphCNNSAT(nn.Module):
         else:
             h = torch.cat([h_clause, h_var])
 
-        if self.PGSO:
+        if self.PGSO or self.mPGSO:
             dai_e1 = torch.pow(degrees, le1.to(torch.float))
             pooled = (dai_e1 * lm1 * h) + lm3 * h + lm2 * pooled
         else:
