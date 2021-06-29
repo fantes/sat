@@ -34,11 +34,15 @@ class MLP(nn.Module):
             self.linear_or_not = False
             self.linears = torch.nn.ModuleList()
             self.norms = torch.nn.ModuleList()
-        
-            self.linears.append(nn.Linear(input_dim, hidden_dim, dtype=torch.half))
-            for layer in range(num_layers - 2):
-                self.linears.append(nn.Linear(hidden_dim, hidden_dim))
-            self.linears.append(nn.Linear(hidden_dim, output_dim))
+
+            if num_layers < 2:
+                self.linears.append(nn.Linear(input_dim, output_dim, dtype=torch.float))
+            else:
+                self.linears.append(nn.Linear(input_dim, hidden_dim, dtype=torch.float))
+                for layer in range(num_layers - 2):
+                    self.linears.append(nn.Linear(hidden_dim, hidden_dim, dtype=torch.float))
+                self.linears.append(nn.Linear(hidden_dim, output_dim,dtype=torch.float))
+
 
             if self.graph_norm:
                 for layer in range(num_layers - 1):
@@ -55,5 +59,10 @@ class MLP(nn.Module):
             #If MLP
             h = x
             for layer in range(self.num_layers - 1):
+                #h = self.linears[layer](h)
+                #h = self.norms[layer](h)
+                #h = F.relu(h)
                 h = F.relu(self.norms[layer](self.linears[layer](h)))
+                #            h = self.linears[self.num_layers - 1](h)
+                #            return h
             return self.linears[self.num_layers - 1](h)

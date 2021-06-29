@@ -58,7 +58,7 @@ def build_graph_pooler(batch_size,varvar,nclause,nvar, maxclause,maxvar):
     return torch.sparse_coo_tensor([spgraphpooler.row,spgraphpooler.col],spgraphpooler.data, spgraphpooler.shape, dtype=torch.float32).to(self.device)
 
 
-def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.half):
+def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.float):
     clause_arities = []
     var_arities = []
     nclause = []

@@ -19,21 +19,21 @@ class GraphNorm(nn.Module):
 
     def forward(self, h):
         batchsize = int(h.shape[0]/(self.maxclause+self.maxvar))
-        mean = torch.zeros(batchsize, h.shape[1],dtype=h.dtype).to(h.device)
-        batch_index = torch.arange(batchsize).to(h.device).repeat_interleave(self.maxvar+self.maxclause)
-        batch_index = batch_index.view((-1,1)).expand_as(h)
-        mean.scatter_add_(0, batch_index, h)
+        mean = torch.zeros(batchsize, h.shape[1],dtype=torch.float32).to(h.device)
+        batch_index = torch.arange(batchsize).repeat_interleave(self.maxvar+self.maxclause).to(h.device)
+        batch_index = batch_index.view((-1,1)).expand_as(h).to(h.device)
+        mean = torch.scatter_add(mean, 0, batch_index, h.to(torch.float32))
         mean /=  (self.maxvar+self.maxclause)
         mean = mean.repeat_interleave(self.maxvar+self.maxclause, dim=0)
 
-        #sub = h - mean * self.mean_scale
-        mean *= -self.mean_scale
+        mean *= -self.mean_scale.to(h.device)
         mean += h
 
-
-        std = torch.zeros(batchsize, h.shape[1],dtype=h.dtype).to(h.device)
+        std = torch.zeros(batchsize, h.shape[1],dtype=torch.float32).to(h.device)
         std.scatter_add_(0, batch_index, mean.pow(2))
         std = (std/(self.maxclause+self.maxvar) + 1e-6).sqrt()
         std = std.repeat_interleave(self.maxclause+self.maxvar,dim=0)
 
-        return self.weight * mean / std + self.bias
+        ret = self.weight * mean / std + self.bias
+        ret = ret.to(h.dtype)
+        return ret

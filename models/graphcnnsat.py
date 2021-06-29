@@ -17,6 +17,7 @@ class GraphCNNSAT(nn.Module):
 
     def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=2, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, graph_type = "var.var", var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "sum", graph_pooling_type = "average", lfa = True):
 
+
         super(GraphCNNSAT, self).__init__()
 
         self.final_dropout = final_dropout
@@ -74,16 +75,17 @@ class GraphCNNSAT(nn.Module):
             self.e2 = nn.Parameter(torch.ones(1))
             self.e3 = nn.Parameter(torch.ones(1))
 
+        self.num_mlp_layers = num_mlp_layers
+
+        self.embedder = MLP(self.num_mlp_layers, self.input_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar)
+
+
         self.mlps = torch.nn.ModuleList()
         self.norms = torch.nn.ModuleList()
 
-        self.num_mlp_layers = num_mlp_layers
 
         for layer in range(self.num_layers-1):
-            if layer == 0:
-                self.mlps.append(MLP(self.num_mlp_layers, self.input_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar))
-            else:
-                self.mlps.append(MLP(self.num_mlp_layers, self.hidden_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar))
+            self.mlps.append(MLP(self.num_mlp_layers, self.hidden_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar))
 
             if self.graph_norm:
                 self.norms.append(GraphNorm(self.hidden_dim,self.maxclause, self.maxvar))
@@ -100,7 +102,7 @@ class GraphCNNSAT(nn.Module):
                 self.linears_prediction.append(nn.Linear(self.hidden_dim, self.output_dim))
         self.linears_prediction
 
-        self.fc1 = nn.Linear(self.hidden_dim, self.output_dim)
+        self.fc1 = nn.Linear(self.hidden_dim, self.output_dim, dtype=torch.float)
         self.final_dropout = final_dropout
 
         if self.lfa:
@@ -159,8 +161,8 @@ class GraphCNNSAT(nn.Module):
                 var_pooled = torch.mul(var_pooled, die2)
 
             else:
-                clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
-                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause.to(torch.float).to(biggraph.device)).to(torch.half).to(h_var.device)
+                clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var.to(torch.float).to(biggraph.device)).to(torch.float).to(h_var.device)
+                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause.to(torch.float).to(biggraph.device)).to(torch.float).to(h_var.device)
 
             if self.neighbor_pooling_type == "average": #should be subsumed by PGSO
                 clause_pooled = clause_pooled/degree_clauses.expand_as(clause_pooled)
@@ -192,7 +194,8 @@ class GraphCNNSAT(nn.Module):
             pooled = (dai_e1 * lm1 * h) + lm3 * h + lm2 * pooled
         else:
             pooled +=  (1+self.eps[layer])*h
-        pooled = F.relu(self.norms[layer](self.mlps[layer](pooled.to(torch.half))))
+
+        pooled = F.relu(self.norms[layer](self.mlps[layer](pooled.to(torch.float))))
 
         if self.varvar:
             return None, pooled
@@ -201,12 +204,13 @@ class GraphCNNSAT(nn.Module):
 
 
     def forward(self, batch_size, biggraph, clause_feat, var_feat, graph_pooler):
+
         if self.random > 0:
             for r in range(self.random):
                 if not self.varvar:
-                    r1 = torch.randint(self.random, size=(len(clause_feat),1),device=var_feat.device).half() / self.random
+                    r1 = torch.randint(self.random, size=(len(clause_feat),1),device=var_feat.device).float() / self.random
                     clause_feat = torch.cat([clause_feat, r1],1)
-                r2 = torch.randint(self.random, size=(len(var_feat), 1),device=var_feat.device).half() / self.random
+                r2 = torch.randint(self.random, size=(len(var_feat), 1),device=var_feat.device).float() / self.random
                 var_feat = torch.cat([var_feat, r2],1)
 
         if self.graph_embedding:
@@ -220,10 +224,21 @@ class GraphCNNSAT(nn.Module):
             h_clause = clause_feat
         h_var = var_feat
 
+
+
+        if self.varvar:
+            h = h_var
+        else:
+            h = torch.cat([h_clause,h_var])
+        h= self.embedder(h)
+        if self.varvar:
+            h_var = h
+        else:
+            h_clause, h_var = torch.split(h,[self.maxclause*batch_size,self.maxvar*batch_size])
+
+
         for layer in range(self.num_layers-1):
-            print(layer)
             h_clause, h_var  = self.next_layer_eps(h_clause,h_var, layer, biggraph,batch_size)
-            print(layer)
             if self.graph_embedding:
                 if not self.varvar:
                     clause_hidden_rep.append(h_clause)
@@ -276,14 +291,14 @@ def main():
 
     varvar = False
     model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
-    model.half()
+    model.float()
     tds = GraphDataset('../data/test_arup/1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     m,labels = tds.getitem(0)
     batch_graph=[m]
 
     batch_size = len(batch_graph)
 
-    clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, varvar, model.maxclause, model.maxvar, dtype=torch.half)
+    clause_feat, var_feat, nclause, nvar = get_feat(batch_graph, varvar, model.maxclause, model.maxvar, dtype=torch.float)
 
     device=torch.device("cuda:0")
     cpu=torch.device("cpu")

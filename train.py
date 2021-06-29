@@ -7,27 +7,45 @@ from data.graphDataset import *
 
 
 
-def train(model,dataset,batch_size=1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
+def train(model,dataset,max_epoch, batch_size=1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
     model.to(device)
     model.train()
 
     dl = dataset.getDataLoader(batch_size, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
 
+    optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
+    criterion = torch.nn.CrossEntropyLoss()
+
+
     m,labels = dataset.getitem(0)
 
-    for i_batch, sample_batched in enumerate(dl):
-        batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
-        target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
-        biggraph = biggraph.to(device)
-        clause_feat = clause_feat.to(device)
-        var_feat = var_feat.to(device)
-        if graph_pooler is not None:
-            graph_pooler.to(device)
-        res = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
-        # res is batchsize x num_var|clauses x 3
-        loss_fn = torch.nn.CrossEntropyLoss()
-        # target should be batchsize x num_var  (each cell contains target class)
-        loss = loss_fn(torch.transpose(res,1,2), target)
+    running_loss = 0.0
+
+    for epoch in range(0, max_epoch):
+
+        for i_batch, sample_batched in enumerate(dl):
+            batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
+            target = convert_labels(labels, dataset.neg_as_link, model.maxvar, device)
+            biggraph = biggraph.to(device)
+            clause_feat = clause_feat.to(device)
+            var_feat = var_feat.to(device)
+
+            optimizer.zero_grad()
+
+            if graph_pooler is not None:
+                graph_pooler.to(device)
+            res = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
+            # res is batchsize x num_var|clauses x 3
+            # target should be batchsize x num_var  (each cell contains target class)
+            #print(res)
+            loss = criterion(torch.transpose(res,1,2), target)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if i_batch % 1 == 0:    # 2000 / 1999 print every 2000 mini-batches
+                print('[%d, %5d] loss: %.10f' %  (epoch + 1, i_batch + 1, running_loss / 2000))
+                running_loss = 0.0
 
 
 
@@ -45,9 +63,9 @@ def main():
                         help='final layer dropout for graph embedding (default: 0.5)')
     parser.add_argument('--random', type=int, default=1,
                         help='number of random features (default: 1)')
-    parser.add_argument('--maxclause', type=int, default=200000,
+    parser.add_argument('--maxclause', type=int, default=2000,
                         help='max number of clauses (default: 20M)')
-    parser.add_argument('--maxvar', type=int, default=5000,
+    parser.add_argument('--maxvar', type=int, default=1000,
                         help='max number of vars (default: 5M)')
     parser.add_argument('--graph_type', type=str, default="clause.var",
                         help='graph_type in clause.var|var.var')
@@ -56,8 +74,7 @@ def main():
     parser.add_argument('--clause_classif', type=bool, default=False,
                         help='goal is clause classification (default: False) can be combined with var classif , both false means whole graph classif')
     parser.add_argument('--pgso', action='store_true',  help='use pgso')
-    parser.add_argument('--mpgso', type=bool, default=False,
-                        help='use mpgso')
+    parser.add_argument('--mpgso', action='store_true',  help='use mpgso')
     parser.add_argument('--graph_norm', type=bool, default=True,
                         help='use graph normlization')
     parser.add_argument('--neighbor_pooling_type', type=str, default="sum", choices=["sum", "average"],                        help='Pooling for over neighboring nodes: sum, average')
@@ -68,6 +85,7 @@ def main():
                         help='GPU id (default:0)')
     parser.add_argument('--graphfile', type=str, help='graph file as obtained by preprocess.py')
     parser.add_argument('--datasetpath', type=str, help='prefix of partial graphs')
+    parser.add_argument('--epoch', type=int, default = 10, help='number of epoch')
 
     args = parser.parse_args()
 
@@ -76,7 +94,7 @@ def main():
 
     tds = GraphDataset(args.graphfile, cachesize=0, path_prefix=args.datasetpath)
 
-    train(model, tds)
+    train(model, tds, args.epoch)
 
 
 if __name__ == '__main__':
