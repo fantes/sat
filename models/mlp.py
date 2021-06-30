@@ -62,7 +62,7 @@ class MLP(nn.Module):
                 #h = self.linears[layer](h)
                 #h = self.norms[layer](h)
                 #h = F.relu(h)
-                h = F.relu(self.norms[layer](self.linears[layer](h)))
+                h = F.gelu(self.norms[layer](self.linears[layer](h)))
                 #            h = self.linears[self.num_layers - 1](h)
                 #            return h
             return self.linears[self.num_layers - 1](h)
