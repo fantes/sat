@@ -101,7 +101,6 @@ class GraphCNNSAT(nn.Module):
                 self.linears_prediction.append(nn.Linear(self.input_dim, self.output_dim))
             else:
                 self.linears_prediction.append(nn.Linear(self.hidden_dim, self.output_dim))
-        self.linears_prediction
 
         self.fc1 = nn.Linear(self.hidden_dim, self.output_dim, dtype=torch.float)
         self.final_dropout = final_dropout
@@ -121,6 +120,7 @@ class GraphCNNSAT(nn.Module):
         # h should be (maxvar+maxclause)*batch_size
 
         # PGSO see https://arxiv.org/abs/2101.10050 (page 5)
+
 
         if self.neighbor_pooling_type == "average" or self.PGSO or self.mPGSO:
             if self.varvar:
@@ -166,8 +166,8 @@ class GraphCNNSAT(nn.Module):
                 var_pooled = torch.mul(var_pooled, die2)
 
             else:
-                clause_pooled = torch.sparse.mm(biggraph.to(torch.float), h_var.to(torch.float).to(biggraph.device)).to(torch.float).to(h_var.device)
-                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1).to(torch.float), h_clause.to(torch.float).to(biggraph.device)).to(torch.float).to(h_var.device)
+                clause_pooled = torch.sparse.mm(biggraph, h_var.to(biggraph.device)).to(h_var.device)
+                var_pooled = torch.sparse.mm(torch.transpose(biggraph,0,1), h_clause.to(biggraph.device)).to(h_var.device)
 
             if self.neighbor_pooling_type == "average": #should be subsumed by PGSO
                 clause_pooled = clause_pooled/degree_clauses.expand_as(clause_pooled)
@@ -201,7 +201,7 @@ class GraphCNNSAT(nn.Module):
         else:
             pooled +=  (1+self.eps[layer])*h
 
-        pooled = F.relu(self.norms[layer](self.mlps[layer](pooled.to(torch.float))))
+        pooled = F.gelu(self.norms[layer](self.mlps[layer](pooled.to(torch.float))))
 
         if self.varvar:
             return None, pooled
