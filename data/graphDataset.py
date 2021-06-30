@@ -11,7 +11,7 @@ from utils.utils import *
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filenames, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./"):
+    def __init__(self, filenames, maxvar, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./"):
         self.fnames = filenames
         self.cachesize = cachesize
         self.cache = {}
@@ -21,9 +21,9 @@ class GraphDataset(torch.utils.data.Dataset):
         self.nsamples = []
         self.nclause = []
         self.nvar = []
-        self.varPermRows = []
-        self.varData = []
+        self.maxvar = maxvar
         self.totalNLabels = 0
+        self.negClauseMatrix = []
         findex = 0
 
         for findex, filename in enumerate(filenames):
@@ -55,7 +55,7 @@ class GraphDataset(torch.utils.data.Dataset):
             self.permute_clauses = not self.varvar and permute_clauses
             self.neg_clauses = not self.neg_as_link and  neg_clauses
             if neg_clauses:
-                self.nclause[findex] = self.nclause[findex]+self.nvar[findex]
+                self.nclause[findex] += self.nvar[findex]
             ll = f.readline()
 
             while ll:
@@ -68,31 +68,33 @@ class GraphDataset(torch.utils.data.Dataset):
                 ll = f.readline()
 
             if self.permute_vars:
-                self.varPermRows.append(list(range(self.nvar[findex])))
+
                 if self.neg_as_link:
-                    self.varData.append([1]*(self.nvar[findex]))
+                    self.varPermRows = list(range(self.maxvar))
+                    self.varData = [1]*(self.maxvar)
                 else:
-                    self.varData.append([True]*(self.nvar[findex]))
+                    self.varPermRows = list(range(self.maxvar*2))
+                    self.varData = [1]*(self.maxvar*2)
 
             if self.permute_clauses:
                 self.clausesPerRows.append(list(range(self.nclause[findex])))
                 if self.neg_as_link:
                     self.varClause.append([1]*self.nclause[findex])
                 else:
-                    self.varClause.append([True]*self.nclause[findex])
+                    self.varClause.append([1]*self.nclause[findex])
 
             if self.neg_clauses:
                 if self.varvar:
                     vlist = [v for v in range(0,self.nvar)]
-                    vneglist = [self.nvar+v for v in range(0,self.nvar)]
-                    varClause = [True] *self.nvar
-                    self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(vlist, vneglist)),shape=(self.nvar*2, self.nvar*2),dtype=bool))
+                    vneglist = [self.maxvar+v for v in range(0,self.nvar[findex])]
+                    varClause = [True] *self.nvar[findex]
+                    self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(vlist, vneglist)),shape=(self.maxvar*2, self.maxvar*2),dtype=bool))
                 else:
-                    vlist = [v for v in range(0,self.nvar)]
-                    vneglist = [self.nvar+v for v in range(0,self.nvar)]
-                    negclauselist = list(range(0,self.nvar))
-                    varClause = [True] *2*self.nvar
-                    self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar, self.nvar*2),dtype=bool))
+                    vlist = [v for v in range(0,self.nvar[findex])]
+                    vneglist = [self.maxvar+v for v in range(0,self.nvar[findex])]
+                    negclauselist = list(range(0,self.nvar[findex]))
+                    varClause = [1] *2*self.nvar[findex]
+                    self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar[findex], self.maxvar*2),dtype=np.float))
 
         print("total number of samples: " + str(sum(self.nsamples)))
         print("average number of labels: " + str(self.totalNLabels/sum(self.nsamples)))
@@ -107,17 +109,17 @@ class GraphDataset(torch.utils.data.Dataset):
         new_labels = []
         if self.permute_vars:
             if self.neg_as_link:
-                varPermuted = np.random.permutation(list(range(self.nvar[pbid])))
+                varPermuted = np.random.permutation(list(range(self.maxvar)))
             else:
-                varPermuted = np.random.permutation(list(range(self.nvar[pbid]*2)))
+                varPermuted = np.random.permutation(list(range(self.maxvar*2)))
             if not self.varvar:
                 if self.neg_as_link:
-                    vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid],self.nvar[pbid]),dtype=np.byte)
+                    vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar,self.maxvar),dtype=float)
                 else:
-                    vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid]*2,self.nvar[pbid]*2),dtype=bool)
+                    vperMatrix = scipy.sparse.csr_matrix((self.varData,(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=float)
                 res =  ssm * vperMatrix
             else :
-                vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows[pbid],varPermuted)),shape=(self.nvar[pbid]*2,self.nvar[pbid]*2),dtype=bool)
+                vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=float)
                 res = vperMatrix * ssm * vperMatrix
 
             for l in labels:
@@ -127,7 +129,7 @@ class GraphDataset(torch.utils.data.Dataset):
                     else:
                         new_labels.append(varPermuted[l-1]+1)
                 else:
-                    new_labels.append(varPermuted[conv_vindex(l,self.nvar[pbid],False)])
+                    new_labels.append(varPermuted[conv_vindex(l,self.maxvar,False)])
         else:
             new_labels = labels
 
@@ -135,7 +137,7 @@ class GraphDataset(torch.utils.data.Dataset):
 
         if self.permute_clauses:
             clausesPermuted = np.random.permutation(list(range(self.nclause[pbid])))
-            clausePerMatrix = scipy.sparse.csr_matrix((self.varClause[pbid],(self.clausesPerRows[pbid],clausesPermuted)),shape=(self.nclause[pbid],self.nclause[pbid]),dtype=bool)
+            clausePerMatrix = scipy.sparse.csr_matrix((self.varClause[pbid],(self.clausesPerRows[pbid],clausesPermuted)),shape=(self.nclause[pbid],self.nclause[pbid]),dtype=float)
             res = clausePerMatrix *res
 
 
@@ -153,10 +155,15 @@ class GraphDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         if idx in self.cache:
             ssm, labels = self.mpermute(self.cache[idx][0], self.cache[idx][1], self.cache[idx][2])
-            return (ssm, labels)
         ssm = None
         for graphfile in self.data[idx]['f']:
             newssm = scipy.sparse.load_npz(self.path_prefix+graphfile).tocsr()
+            shape = newssm.shape
+            if self.neg_as_link:
+                newshape = (shape[0], self.maxvar)
+            else:
+                newshape = (shape[0], self.maxvar*2)
+            newssm.resize(newshape)
             #below: allow to read clause x var files to give var var matrices
             if self.nclause != 0 and self.varvar:
                 newssm = newssm.transpose() * newssm
@@ -199,7 +206,10 @@ class GraphDataset(torch.utils.data.Dataset):
         print("average numeber of labels: " + str(anl))
         print("average number of vars: " + str((sum(self.nvar)/len(self.nvar))))
         zero_weight = anl/(sum(self.nvar)/len(self.nvar))
-        weights = [zero_weight,(1-zero_weight)/2,(1-zero_weight)/2]
+        if self.neg_as_link:
+            weights = [zero_weight*3,(1-zero_weight)/2*3,(1-zero_weight)/2*3]
+        else:
+            weights = [zero_weight*2,(1-zero_weight)*2]
         return train_loader, test_loader, weights
 
 
@@ -209,11 +219,12 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset(['./test_arup/1.graph','./test_arup/2.graph'],  self_supervised = False, cachesize=0)
+    tds = GraphDataset(['./test_arup_neg_as_var/4.graph'],  200, neg_clauses = True,permute_var=True, self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
     ssm, labels = tds.getitem(0)
+    print("shape: " + str(ssm.shape))
     print("labels")
     print(labels)
     end = time.process_time()
@@ -227,7 +238,7 @@ def main():
     print("get item time: " + str(end-start))
     print(ssm.shape)
 
-    ssm, labels = tds.getitem(14)
+    ssm, labels = tds.getitem(2)
     print("labels")
     print(labels)
     end = time.process_time()

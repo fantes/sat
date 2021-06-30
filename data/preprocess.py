@@ -7,8 +7,8 @@ import numpy as np
 import pickle
 import tqdm
 import sys
-sys.path.append("../utils/")
-from utils import *
+sys.path.append("../")
+from utils.utils import *
 
 def find_num_clause(clause, smatrix,neg_as_link):
     smatrix.eliminate_zeros()
@@ -56,13 +56,13 @@ def get_smatrix(varvar,neg_as_link,nclauses,nvars,v,i0,i1):
     if not varvar:
         if neg_as_link:
             smatrix = scipy.sparse.csr_matrix((np.asarray(v), (np.asarray(i0), np.asarray(i1))),
-                                              dtype=np.byte,shape=(nclauses,nvars))
+                                              dtype=np.float,shape=(nclauses,nvars))
         else:
             smatrix = scipy.sparse.csr_matrix((np.asarray(v),(np.asarray(i0),np.asarray(i1))),
-                                              dtype=np.bool,shape=(nclauses,nvars*2))
+                                              dtype=np.float,shape=(nclauses,nvars*2))
     else:
         smatrix = scipy.sparse.csr_matrix((np.asarray(v),(np.asarray(i0),np.asarray(i1))),
-                                          dtype=np.int,shape=(nvars*2,nvars*2))
+                                          dtype=np.float,shape=(nvars*2,nvars*2))
     return smatrix
 
 
@@ -85,7 +85,7 @@ def get_indices_values_from_clause(clause,varvar,neg_as_link, offsetnc):
                 else:
                     values.append(1)
         else:
-            values.extend([True]*len(clause))
+            values.extend([1]*len(clause))
 
     else:
         for v1 in range(0, len(clause)):
@@ -229,6 +229,7 @@ def process_arup(arupfile, target_dir, nvars,varvar,neg_as_link):
 
             #append new clause to current matrix for future graphs/labels
             i0, i1, v = get_indices_values_from_text_clause(nvars, neg_as_link, strvar, varvar,0)
+
             smatrix = get_smatrix(varvar,neg_as_link, 1, nvars,v,i0, i1)
             if current_matrix is None:
                 current_matrix = smatrix
