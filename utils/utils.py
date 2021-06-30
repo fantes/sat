@@ -13,15 +13,22 @@ def conv_vindex(v, nvar, neg_as_link):
         return v-1
 
 def convert_labels(labels, neg_as_link, maxvar, device):
-    target = torch.zeros((len(labels),maxvar), dtype=torch.long, device=device)
+    if neg_as_link:
+        target = torch.zeros((len(labels),maxvar), dtype=torch.long, device=device)
+    else:
+        target = torch.zeros((len(labels),2*maxvar), dtype=torch.long, device=device)
     for count, b in enumerate(labels):
         # batch
         for l in b:
             #labels in batch
-            if l < 0:
-                target[count, conv_vindex(l, maxvar, neg_as_link)] = 1
+            if neg_as_link:
+                if l < 0:
+                    target[count, conv_vindex(l, maxvar, neg_as_link)] = 1
+                else:
+                    target[count, conv_vindex(l,maxvar,neg_as_link)] = 2
             else:
-                target[count, conv_vindex(l,maxvar,neg_as_link)] = 2
+                target[count, conv_vindex(l, maxvar, neg_as_link)] = 1
+
     return target
 
 
@@ -38,13 +45,13 @@ def big_tensor_from_batch_graph(graphs, varvar, maxclause, maxvar, neg_as_link):
     big_mat = graphs[0].tocoo(copy=False)
     for g in graphs[1:]:
         if neg_as_link:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.float)
         else:
-            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.short)
+            big_mat = scipy.sparse.bmat([[big_mat,None],[None,g.tocoo(copy=False)]],format="coo",dtype=np.float)
     if neg_as_link:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.float)
     else:
-        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.short)
+        big_tensor = torch.sparse_coo_tensor([big_mat.row, big_mat.col], big_mat.data, big_mat.shape, dtype=torch.float)
     return big_tensor
 
 
@@ -68,18 +75,20 @@ def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.float):
     for ssm in batch_graph:
         if not varvar: #ie clause x var
             nclause.append(ssm.shape[0])
-            clause_arities.append(torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]),torch.zeros(maxclause-nclause[-1],dtype=dtype)]))
+            clause_arities.append(torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]).to(dtype),torch.zeros(maxclause-nclause[-1],dtype=dtype)]))
         nvar.append(ssm.shape[1])
-        ar = torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0])
+        ar = torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0]).to(dtype)
         if varvar: # we store on disk only directed links
             ar += torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0])
-        var_arities.append(torch.cat([ar,torch.zeros(maxvar-nvar[-1],dtype=dtype)]))
+
+        #var_arities.append(torch.cat([ar,torch.zeros(maxvar-nvar[-1],dtype=dtype)]))
+        var_arities.append(ar)
 
     if not varvar:
         clause_feat = torch.cat(clause_arities, 0)
         clause_feat.unsqueeze_(1)
 
-    var_feat = torch.cat(var_arities,0)
+    var_feat = torch.cat(var_arities,0).to(dtype)
     var_feat.unsqueeze_(1)
 
     if not varvar:
