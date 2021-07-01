@@ -67,6 +67,8 @@ def build_graph_pooler(batch_size,varvar,nclause,nvar, maxclause,maxvar):
 
 def get_feat(batch_graph, nvars_batch, varvar, maxclause, maxvar,normalize, dtype=torch.float):
     clause_arities = []
+    clause_present_batch = []
+    var_present_batch = []
     var_arities = []
     nclause = []
     nvar = []
@@ -75,21 +77,49 @@ def get_feat(batch_graph, nvars_batch, varvar, maxclause, maxvar,normalize, dtyp
     for i, ssm in enumerate(batch_graph):
         if not varvar: #ie clause x var
             nclause.append(ssm.shape[0])
-            clause_arities.append(torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]).to(dtype),torch.zeros(maxclause-nclause[-1],dtype=dtype)]))
+            car = torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]).to(dtype),torch.zeros(maxclause-nclause[-1],dtype=dtype)])
+            clausepresent = torch.zeros_like(car)
+            for j,a in enumerate(car):
+                if car[j] != 0:
+                    clausepresent[j] = 1
+            clause_present_batch.append(clausepresent)
         nvar.append(ssm.shape[1])
         ar = torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0]).to(dtype)
+        varpresent = torch.zeros_like(ar)
+        for j,a in enumerate(ar):
+            if ar[j] != 0:
+                varpresent[j] = 1
+        var_present_batch.append(varpresent)
         if normalize:
-            avgar = torch.sum(ar)/nvars_batch[i]
-            stddev = 0
-            for a in ar:
-                if a != 0:
-                    stddev += (a - avgar) * (a-avgar)
-            stddev = math.sqrt(stddev)
-            arities = torch.zeros_like(ar)
-            for j,a in enumerate(ar):
-                if a != 0:
-                    arities[j] = (a - avgar)/stddev
-            ar = arities
+            avgar = torch.sum(ar)/maxvar
+            # stddev = 0
+            # for a in ar:
+            #     # if a != 0:
+            #     stddev += (a - avgar) * (a-avgar)
+            # stddev = math.sqrt(stddev)
+            stddev = math.sqrt(torch.sum((ar - avgar)*(ar - avgar)))
+            # arities = torch.zeros_like(ar)
+            # for j,a in enumerate(ar):
+            #     # if a != 0:
+            #     arities[j] = (a - avgar)/stddev
+            # ar = arities
+            ar = ar - avgar / stddev
+
+            if not varvar:
+                avgcar = torch.sum(car)/maxclause
+                stddev = math.sqrt(torch.sum((car - avgcar)*(car - avgcar)))
+                car = car - avgcar / stddev
+
+                # stddev2 = 0
+                # for a in car:
+                #     # if a != 0:
+                #         stddev2 += (a-avgcar)*(a-avgcar)
+                # stddev2 = math.sqrt(stddev2)
+                # arities2 = torch.zeros_like(car)
+                # for j,a in enumerate(car):
+                #     # if a!= 0:
+                #         arities2[j] = (a-avgcar)/stddev2
+                # car = arities2
 
 
         if varvar: # we store on disk only directed links
@@ -97,13 +127,21 @@ def get_feat(batch_graph, nvars_batch, varvar, maxclause, maxvar,normalize, dtyp
 
         #var_arities.append(torch.cat([ar,torch.zeros(maxvar-nvar[-1],dtype=dtype)]))
         var_arities.append(ar)
+        if not varvar:
+            clause_arities.append(car)
 
     if not varvar:
-        clause_feat = torch.cat(clause_arities, 0)
-        clause_feat.unsqueeze_(1)
+        clause_feat = torch.cat(clause_arities, 0).to(dtype)
+        cp = torch.cat(clause_present_batch,0).to(dtype)
+        #clause_feat.unsqueeze_(1)
+        clause_feat = torch.stack([cp, clause_feat], dim=1)
+
 
     var_feat = torch.cat(var_arities,0).to(dtype)
-    var_feat.unsqueeze_(1)
+    vp = torch.cat(var_present_batch, 0).to(dtype)
+
+    #var_feat.unsqueeze_(1)
+    var_feat = torch.stack([vp, var_feat],dim=1)
 
     if not varvar:
         return clause_feat, var_feat, nclause, nvar

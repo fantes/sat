@@ -15,7 +15,7 @@ import scipy.sparse
 
 class GraphCNNSAT(nn.Module):
 
-    def __init__(self, num_layers=10, num_mlp_layers=2,  hidden_dim=2, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, graph_type = "var.var", var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "sum", graph_pooling_type = "average", lfa = True):
+    def __init__(self, num_layers=10, num_mlp_layers=2,  input_dim = 1, hidden_dim=2, output_dim=2, final_dropout=0.5, random = 1, maxclause = 10, maxvar = 20, graph_type = "var.var", var_classification = True, clause_classification = False, graph_embedding = False, PGSO=False, mPGSO=False, graph_norm = True, neighbor_pooling_type = "sum", graph_pooling_type = "average", lfa = True):
 
 
         super(GraphCNNSAT, self).__init__()
@@ -23,7 +23,7 @@ class GraphCNNSAT(nn.Module):
         self.final_dropout = final_dropout
         self.num_layers = num_layers
         self.random = random
-        self.input_dim = 1 # arities
+        self.input_dim = input_dim # arities
 
         self.PGSO = PGSO and not mPGSO
         self.mPGSO = mPGSO
@@ -296,7 +296,7 @@ class GraphCNNSAT(nn.Module):
 def main():
 
     varvar = False
-    model = GraphCNNSAT(var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
+    model = GraphCNNSAT(input_dim = 2, var_classification=True, clause_classification=False, graph_embedding = False, mPGSO=True, maxclause = 20000000, maxvar = 5000000, lfa = False, graph_norm = True, num_layers=5, graph_type="clause.var")
     model.float()
     tds = GraphDataset('../data/test_arup/1.graph', cachesize=0, path_prefix="/home/infantes/code/sat/data/")
     m,labels = tds.getitem(0)

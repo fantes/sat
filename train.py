@@ -17,7 +17,7 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
 
     plotter = VisdomLinePlotter(env_name="sat")
 
-    #optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
+    #optimizer = torch.optim.AdamW(model.parameters(),lr = lr, amsgrad=True)
     print("using lr: " + str(lr))
     optimizer = torch.optim.SGD(model.parameters(),lr=lr)
     # class 0 is much more present then others
@@ -37,8 +37,8 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
         model.train()
         for i_batch, sample_batched in enumerate(train_dl):
             batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels, nvars = sample_batched
-            # print("train labels: " +str(labels))
             target = convert_labels(labels, dataset.neg_as_link, dataset.maxvar, device)
+            # print("train labels: " +str(labels))
             # print("train target: " +str(target))
 
             biggraph = biggraph.to(device)
@@ -54,8 +54,8 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
             # target should be batchsize x num_var  (each cell contains target class)
             #print(res)
             #print("train res: " + str(torch.transpose(res,1,2)))
-            #pred= torch.argmax(res,dim=2)
-            #print("train pred: " + str(pred))
+            pred= torch.argmax(res,dim=2)
+            # print("train pred: " + str(pred))
 
             loss = criterion(torch.transpose(res,1,2), target)
             loss.backward()
@@ -213,7 +213,7 @@ def main():
         mmv = 2*args.maxvar
         mc = args.maxclause + args.maxvar
 
-    model = GraphCNNSAT(args.num_layers, args.num_mlp_layers,  args.hidden_dim, args.output_dim, args.final_dropout, args.random, mc, mmv, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
+    model = GraphCNNSAT(args.num_layers, args.num_mlp_layers, 2, args.hidden_dim, args.output_dim, args.final_dropout, args.random, mc, mmv, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
     model.to(torch.device("cuda:0"))
 
 

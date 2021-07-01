@@ -214,7 +214,7 @@ class GraphDataset(torch.utils.data.Dataset):
         if self.neg_as_link:
             weights = [zero_weight*3,(1-zero_weight)/2*3,(1-zero_weight)/2*3]
         else:
-            weights = [zero_weight*10,(1-zero_weight)]
+            weights = [zero_weight,(1-zero_weight)]
         return train_loader, test_loader, weights
 
 
