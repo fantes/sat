@@ -120,14 +120,15 @@ class GraphDataset(torch.utils.data.Dataset):
                 vperMatrix = scipy.sparse.csr_matrix((self.varData[pbid],(self.varPermRows,varPermuted)),shape=(self.maxvar*2,self.maxvar*2),dtype=float)
                 res = vperMatrix * ssm * vperMatrix
 
-            for l in labels:
-                if self.neg_as_link:
-                    if l < 0:
-                        new_labels.append(-varPermuted[-l-1]+1)
-                    else:
-                        new_labels.append(varPermuted[l-1]+1)
-                else:
-                    new_labels.append(varPermuted[conv_vindex(l,self.maxvar,False)])
+            var_pos = []
+            if self.neg_as_link:
+                new_labels = [ (-varPermuted[-l-1]+1)
+                               if (l< 0)
+                               else (varPermuted[l-1]+1)
+                               for l in labels]
+            else:
+                var_pos = [varPermuted[conv_vindex(l,self.maxvar,False)] for l in labels]
+                new_labels = [(vp+1) if vp < self.maxvar else (-(vp-self.maxvar+1)) for vp in var_pos]
         else:
             new_labels = labels
 
@@ -222,13 +223,13 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset(['./debug/ex.graph', './debug/ex2.graph'],  5, neg_clauses = True,permute_vars=False, self_supervised = False, cachesize=0)
+    tds = GraphDataset(['./debug/ex.graph'],  5, neg_clauses = True,permute_vars=True, self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
     ssm, labels, nvars = tds.getitem(0)
     print("shape: " + str(ssm.shape))
-    print("ssm: " + str(ssm.todense()))
+    print("ssm: \n" + str(ssm.todense()))
     print("labels: "+ str(labels))
     print("nvars: " + str(nvars))
     print(labels)
@@ -239,27 +240,27 @@ def main():
     ssm, labels, nvars = tds.getitem(1)
     print("labels"+str(labels))
     print("ssm shame" + str(ssm.shape))
-    print("ssm: " + str(ssm.todense()))
+    print("ssm: \n" + str(ssm.todense()))
     print("nvars: " + str(nvars))
     end = time.process_time()
     print("get item time: " + str(end-start))
 
-    ssm, labels, nvars = tds.getitem(2)
-    print("labels"+str(labels))
-    print("ssm shame" + str(ssm.shape))
-    print("ssm: " + str(ssm.todense()))
-    print("nvars: " + str(nvars))
-    end = time.process_time()
-    print("get item time: " + str(end-start))
+    # ssm, labels, nvars = tds.getitem(2)
+    # print("labels"+str(labels))
+    # print("ssm shame" + str(ssm.shape))
+    # print("ssm: " + str(ssm.todense()))
+    # print("nvars: " + str(nvars))
+    # end = time.process_time()
+    # print("get item time: " + str(end-start))
 
 
-    ssm, labels, nvars = tds.getitem(3)
-    print("labels"+str(labels))
-    print("ssm shame" + str(ssm.shape))
-    print("ssm: " + str(ssm.todense()))
-    print("nvars: " + str(nvars))
-    end = time.process_time()
-    print("get item time: " + str(end-start))
+    # ssm, labels, nvars = tds.getitem(3)
+    # print("labels"+str(labels))
+    # print("ssm shame" + str(ssm.shape))
+    # print("ssm: " + str(ssm.todense()))
+    # print("nvars: " + str(nvars))
+    # end = time.process_time()
+    # print("get item time: " + str(end-start))
 
 
     # ssm, labels = tds.getitem(2)
