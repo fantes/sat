@@ -4,22 +4,31 @@ from utils.utils import *
 from data.graphDataset import *
 import glob
 from utils.plotter import VisdomLinePlotter
+from utils.dice import *
 
 
-plotter = VisdomLinePlotter(env_name="sat")
-
-def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_inter = 10, test_inter = 1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
+def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = False, print_inter = 10, test_inter = 1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
     model.to(device)
     model.train()
 
+    torch.set_printoptions(profile="full")
+
     train_dl, test_dl, weights = dataset.getDataLoaders(batch_size, test_split, model.maxclause, model.maxvar, model.varvar, graph_classif, num_workers)
+
+    plotter = VisdomLinePlotter(env_name="sat")
 
     #optimizer = torch.optim.AdamW(model.parameters(),amsgrad=True)
     print("using lr: " + str(lr))
     optimizer = torch.optim.SGD(model.parameters(),lr=lr)
     # class 0 is much more present then others
     class_weights = torch.tensor(weights).to(device)
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    if dice:
+        criterion = DiceLoss1D()
+    else:
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+
+    pi = int(print_inter/batch_size)
 
     running_loss = 0.0
 
@@ -27,8 +36,11 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_in
 
         model.train()
         for i_batch, sample_batched in enumerate(train_dl):
-            batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
+            batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels, nvars = sample_batched
+            # print("train labels: " +str(labels))
             target = convert_labels(labels, dataset.neg_as_link, dataset.maxvar, device)
+            # print("train target: " +str(target))
+
             biggraph = biggraph.to(device)
             clause_feat = clause_feat.to(device)
             var_feat = var_feat.to(device)
@@ -41,19 +53,25 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_in
             # res is batchsize x num_var|clauses x 3
             # target should be batchsize x num_var  (each cell contains target class)
             #print(res)
+            #print("train res: " + str(torch.transpose(res,1,2)))
+            #pred= torch.argmax(res,dim=2)
+            #print("train pred: " + str(pred))
+
             loss = criterion(torch.transpose(res,1,2), target)
             loss.backward()
             optimizer.step()
 
 
             running_loss += loss.item()
-            if i_batch % print_inter == print_inter-1:    # 2000 / 1999 print every 2000 mini-batches
+            #if i_batch % pi == pi-1:    # 2000 / 1999 print every 2000 mini-batches
                 # print('[%d, %5d] loss: %.10f' %  (epoch + 1, (i_batch  + 1)*batch_size, running_loss / print_inter))
-                plotter.plot('loss', 'train', 'Loss', epoch+1, running_loss/print_inter)
+        if dice:
+            plotter.plot('loss', 'train', 'Loss_Dice', epoch+1, running_loss/print_inter)
+        else:
+            plotter.plot('loss', 'train', 'Loss', epoch+1, running_loss/print_inter)
 
-                running_loss = 0.0
+        running_loss = 0.0
 
-        model.eval()
         with torch.no_grad():
             precision = []
             precision_nophase = []
@@ -62,15 +80,18 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_in
             f1 = []
             f1_nophase = []
             for sample_batched in train_dl:
-                batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels = sample_batched
+                batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels, nvars = sample_batched
                 target = convert_labels(labels, dataset.neg_as_link, dataset.maxvar, device)
                 biggraph = biggraph.to(device)
                 clause_feat = clause_feat.to(device)
                 var_feat = var_feat.to(device)
                 out = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
                 res = torch.argmax(out,dim=2)
+
                 for bi in range(len(labels)):
-                    #print("labels: " + str(labels[bi]))
+                    # print("test labels: " + str(labels[bi]))
+                    # print("test target: " + str(target[bi]))
+                    # print("test res: " + str(res[bi]))
                     preds = []
                     if dataset.neg_as_link:
                         for i,r in enumerate(res[bi]):
@@ -85,7 +106,7 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_in
                                     preds.append(-(i-dataset.maxvar+1))
                                 else:
                                     preds.append(i+1)
-                    #print("preds: " + str(preds))
+                    # print("preds: " + str(preds))
                     tp = 0
                     tp_nophase = 0
                     for p in labels[bi]:
@@ -118,9 +139,15 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, print_in
                     #     f1_nophase.append(2 * local_precision_nophase * local_recall_nophase / (local_precision_nophase+local_recall_nophase))
 
 
-            plotter.plot('precision', 'train', 'Precision', epoch+1, sum(precision)/len(precision))
-            plotter.plot('recall', 'train', 'Recall', epoch+1, sum(recall)/len(recall))
-            plotter.plot('f1', 'train', 'F1', epoch+1, sum(f1)/len(f1))
+            if dice:
+                plotter.plot('precision', 'train', 'Precision_dice', epoch+1, sum(precision)/len(precision))
+                plotter.plot('recall', 'train_dice', 'Recall_dice', epoch+1, sum(recall)/len(recall))
+                plotter.plot('f1', 'train_dice', 'F1_dice', epoch+1, sum(f1)/len(f1))
+            else:
+
+                plotter.plot('precision', 'train', 'Precision', epoch+1, sum(precision)/len(precision))
+                plotter.plot('recall', 'train', 'Recall', epoch+1, sum(recall)/len(recall))
+                plotter.plot('f1', 'train', 'F1', epoch+1, sum(f1)/len(f1))
 
             # print("precision: " + str(sum(precision)/len(precision)))
             # print("recall: " + str(sum(recall)/len(recall)))
@@ -173,20 +200,23 @@ def main():
     parser.add_argument('--batch_size', type = int, default = 1, help='batch_size')
     parser.add_argument('--permute_vars', action='store_true', help='do random permutation of vars')
     parser.add_argument('--lr', type=float, default = 0.01,  help='lr')
+    parser.add_argument('--dice', action='store_true',  help='use dice loss')
 
     args = parser.parse_args()
 
     tds = GraphDataset(glob.glob(args.graphfile), args.maxvar, args.permute_vars, cachesize=0, path_prefix=args.datasetpath)
     if tds.neg_as_link:
         mmv = args.maxvar
+        mc = ars.maxclause
     else:
         mmv = 2*args.maxvar
+        mc = args.maxclause + args.maxvar
 
-    model = GraphCNNSAT(args.num_layers, args.num_mlp_layers,  args.hidden_dim, args.output_dim, args.final_dropout, args.random, args.maxclause, mmv, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
+    model = GraphCNNSAT(args.num_layers, args.num_mlp_layers,  args.hidden_dim, args.output_dim, args.final_dropout, args.random, mc, mmv, args.graph_type, args.var_classif, args.clause_classif, False, args.pgso, args.mpgso, args.graph_norm, args.neighbor_pooling_type, args.graph_pooling_type, args.lfa)
     model.to(torch.device("cuda:0"))
 
 
-    train(model, tds, args.test_split,  args.epoch, args.lr, args.batch_size)
+    train(model, tds, args.test_split,  args.epoch, args.lr, args.batch_size, args.dice)
 
 
 if __name__ == '__main__':
