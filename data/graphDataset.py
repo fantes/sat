@@ -97,8 +97,6 @@ class GraphDataset(torch.utils.data.Dataset):
                     self.negClauseMatrix.append(scipy.sparse.csr_matrix((varClause,(negclauselist*2, vlist + vneglist)),shape=(self.nvar[findex], self.maxvar*2),dtype=np.float))
 
         print("total number of samples: " + str(sum(self.nsamples)))
-        print("average number of labels: " + str(self.totalNLabels/sum(self.nsamples)))
-
 
 
     def __len__(self):
@@ -149,21 +147,26 @@ class GraphDataset(torch.utils.data.Dataset):
         if self.varvar:
             return ssm+self.negClauseMatrix[pbid]
         else:
-            return scipy.sparse.vstack([self.negClauseMatrix[pbid],ssm])
+            return scipy.sparse.vstack([ssm, self.negClauseMatrix[pbid]])
 
 
     def __getitem__(self, idx):
         if idx in self.cache:
             ssm, labels = self.mpermute(self.cache[idx][0], self.cache[idx][1], self.cache[idx][2])
+            return ssm, labels, self.cache[idx][3]
         ssm = None
         for graphfile in self.data[idx]['f']:
             newssm = scipy.sparse.load_npz(self.path_prefix+graphfile).tocsr()
             shape = newssm.shape
+            nvars = shape[1]
             if self.neg_as_link:
                 newshape = (shape[0], self.maxvar)
+                newssm.resize(newshape)
             else:
-                newshape = (shape[0], self.maxvar*2)
-            newssm.resize(newshape)
+                posmatrix = newssm.tocsc()[:,:int(nvars/2)]
+                negmatrix = newssm.tocsc()[:,int(nvars/2):]
+                zeros = scipy.sparse.csc_matrix((shape[0],self.maxvar-int(nvars/2)),dtype=np.float)
+                newssm = scipy.sparse.hstack([posmatrix,zeros,negmatrix,zeros]).tocsr()
             #below: allow to read clause x var files to give var var matrices
             if self.nclause != 0 and self.varvar:
                 newssm = newssm.transpose() * newssm
@@ -178,11 +181,11 @@ class GraphDataset(torch.utils.data.Dataset):
         if len(self.cache) >= self.cachesize and self.cachesize> 0:
             del self.cache[random.choice(list(self.cache.keys()))]
         if self.cachesize>0:
-            self.cache[idx] = (ssm, self.data[idx]['labels'],self.data[idx]['id'])
+            self.cache[idx] = (ssm, self.data[idx]['labels'],self.data[idx]['id'], nvars)
         if self.neg_clauses:
             ssm = self.addNegClauses(ssm,self.data[idx]['id'])
         ssm,labels =  self.mpermute(ssm, self.data[idx]['labels'], self.data[idx]['id'])
-        return ssm, labels
+        return ssm, labels, nvars
 
     def getitem(self,idx):
         return self.__getitem__(idx)
@@ -203,13 +206,13 @@ class GraphDataset(torch.utils.data.Dataset):
         test_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = test_sampler)
 
         anl = self.totalNLabels/sum(self.nsamples)
-        print("average numeber of labels: " + str(anl))
+        print("average number of labels: " + str(anl))
         print("average number of vars: " + str((sum(self.nvar)/len(self.nvar))))
         zero_weight = anl/(sum(self.nvar)/len(self.nvar))
         if self.neg_as_link:
             weights = [zero_weight*3,(1-zero_weight)/2*3,(1-zero_weight)/2*3]
         else:
-            weights = [zero_weight*2,(1-zero_weight)*2]
+            weights = [zero_weight*10,(1-zero_weight)]
         return train_loader, test_loader, weights
 
 
@@ -219,31 +222,52 @@ def main():
     # end = time.process_time()
     # print("preprocess time: " + str(end-start))
     start = time.process_time()
-    tds = GraphDataset(['./test_arup_neg_as_var/4.graph'],  200, neg_clauses = True,permute_var=True, self_supervised = False, cachesize=0)
+    tds = GraphDataset(['./debug/ex.graph', './debug/ex2.graph'],  5, neg_clauses = True,permute_vars=False, self_supervised = False, cachesize=0)
     end = time.process_time()
     print("init time: " + str(end-start))
     start = time.process_time()
-    ssm, labels = tds.getitem(0)
+    ssm, labels, nvars = tds.getitem(0)
     print("shape: " + str(ssm.shape))
-    print("labels")
+    print("ssm: " + str(ssm.todense()))
+    print("labels: "+ str(labels))
+    print("nvars: " + str(nvars))
     print(labels)
     end = time.process_time()
     print("get item time: " + str(end-start))
     print(ssm.shape)
 
-    ssm, labels = tds.getitem(1)
-    print("labels")
-    print(labels)
+    ssm, labels, nvars = tds.getitem(1)
+    print("labels"+str(labels))
+    print("ssm shame" + str(ssm.shape))
+    print("ssm: " + str(ssm.todense()))
+    print("nvars: " + str(nvars))
     end = time.process_time()
     print("get item time: " + str(end-start))
-    print(ssm.shape)
 
-    ssm, labels = tds.getitem(2)
-    print("labels")
-    print(labels)
+    ssm, labels, nvars = tds.getitem(2)
+    print("labels"+str(labels))
+    print("ssm shame" + str(ssm.shape))
+    print("ssm: " + str(ssm.todense()))
+    print("nvars: " + str(nvars))
     end = time.process_time()
     print("get item time: " + str(end-start))
-    print(ssm.shape)
+
+
+    ssm, labels, nvars = tds.getitem(3)
+    print("labels"+str(labels))
+    print("ssm shame" + str(ssm.shape))
+    print("ssm: " + str(ssm.todense()))
+    print("nvars: " + str(nvars))
+    end = time.process_time()
+    print("get item time: " + str(end-start))
+
+
+    # ssm, labels = tds.getitem(2)
+    # print("labels")
+    # print(labels)
+    # end = time.process_time()
+    # print("get item time: " + str(end-start))
+    # print(ssm.shape)
 
 
     # start = time.process_time()
