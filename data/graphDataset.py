@@ -11,11 +11,12 @@ from utils.utils import *
 
 class GraphDataset(torch.utils.data.Dataset):
 
-    def __init__(self, filenames, maxvar, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, cachesize=100, path_prefix="./"):
+    def __init__(self, filenames, maxvar, permute_vars = False, permute_clauses = False, neg_clauses = True, self_supervised = False, normalize = False, cachesize=100, path_prefix="./"):
         self.fnames = filenames
         self.cachesize = cachesize
         self.cache = {}
         self.data = []
+        self.normalize = normalize
         self.path_prefix = path_prefix
         self.self_supervised = self_supervised
         self.nsamples = []
@@ -202,7 +203,7 @@ class GraphDataset(torch.utils.data.Dataset):
         train_sampler = torch.utils.data.SubsetRandomSampler(train_indices)
         test_sampler = torch.utils.data.SubsetRandomSampler(test_indices)
 
-        train_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = train_sampler)
+        train_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, self.normalize, graph_pool, self.neg_as_link), sampler = train_sampler)
 
         test_loader = torch.utils.data.DataLoader(self, batch_size= batch_size, num_workers=num_workers,pin_memory=False, collate_fn = lambda x : postproc(x, maxclause, maxvar, self.varvar, graph_pool, self.neg_as_link), sampler = test_sampler)
 

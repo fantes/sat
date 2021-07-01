@@ -201,10 +201,11 @@ def main():
     parser.add_argument('--permute_vars', action='store_true', help='do random permutation of vars')
     parser.add_argument('--lr', type=float, default = 0.01,  help='lr')
     parser.add_argument('--dice', action='store_true',  help='use dice loss')
+    parser.add_argument('--normalize', action='store_true',  help='normalize arities')
 
     args = parser.parse_args()
 
-    tds = GraphDataset(glob.glob(args.graphfile), args.maxvar, args.permute_vars, cachesize=0, path_prefix=args.datasetpath)
+    tds = GraphDataset(glob.glob(args.graphfile), args.maxvar, permute_vars = args.permute_vars, permute_clauses= False, neg_clauses = True, self_supervised = False, normalize = args.normalize, cachesize=0, path_prefix=args.datasetpath)
     if tds.neg_as_link:
         mmv = args.maxvar
         mc = ars.maxclause
