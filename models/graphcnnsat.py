@@ -57,7 +57,7 @@ class GraphCNNSAT(nn.Module):
 
         self.graph_pooling_type = graph_pooling_type
 
-        self.eps = nn.Parameter(torch.ones(self.num_layers))
+        self.eps = nn.Parameter(torch.zeros(self.num_layers))
         if mPGSO:
             self.a = nn.Parameter(torch.ones(self.num_layers))
             self.m1 = nn.Parameter(torch.ones(self.num_layers))
@@ -78,7 +78,7 @@ class GraphCNNSAT(nn.Module):
 
         self.num_mlp_layers = num_mlp_layers
 
-        self.embedder = MLP(self.num_mlp_layers, self.input_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar)
+        self.embedder = MLP(1, self.input_dim, self.hidden_dim, self.hidden_dim,self.graph_norm,self.maxclause,self.maxvar)
 
 
         self.mlps = torch.nn.ModuleList()
