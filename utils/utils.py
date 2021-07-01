@@ -1,6 +1,7 @@
 import torch
 import scipy.sparse
 import numpy as np
+import math
 
 def conv_vindex(v, nvar, neg_as_link):
     if neg_as_link:
@@ -30,7 +31,6 @@ def convert_labels(labels, neg_as_link, maxvar, device):
                 target[count, conv_vindex(l, maxvar, neg_as_link)] = 1
 
     return target
-
 
 
 
@@ -65,19 +65,32 @@ def build_graph_pooler(batch_size,varvar,nclause,nvar, maxclause,maxvar):
     return torch.sparse_coo_tensor([spgraphpooler.row,spgraphpooler.col],spgraphpooler.data, spgraphpooler.shape, dtype=torch.float32).to(self.device)
 
 
-def get_feat(batch_graph, varvar, maxclause, maxvar,dtype=torch.float):
+def get_feat(batch_graph, nvars_batch, varvar, maxclause, maxvar,dtype=torch.float):
     clause_arities = []
     var_arities = []
     nclause = []
     nvar = []
     batch_size = len(batch_graph)
 
-    for ssm in batch_graph:
+    for i, ssm in enumerate(batch_graph):
         if not varvar: #ie clause x var
             nclause.append(ssm.shape[0])
             clause_arities.append(torch.cat([torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0]).to(dtype),torch.zeros(maxclause-nclause[-1],dtype=dtype)]))
         nvar.append(ssm.shape[1])
         ar = torch.tensor(np.asarray(ssm.sum(axis=0).flatten())[0]).to(dtype)
+        # avgar = torch.sum(arities)/nvars_batch[i]
+        # stddev = 0
+        # for a in arities:
+        #     if a != 0:
+        #         stddev += (a - avgar) * (a-avgar)
+        # stddev = math.sqrt(stddev)
+        # ar = torch.zeros_like(arities)
+        # for j,a in enumerate(arities):
+        #     if a != 0:
+        #         ar[j] = (a - avgar)/stddev
+        # ar = (arities -avgar)/stddev
+
+
         if varvar: # we store on disk only directed links
             ar += torch.tensor(np.asarray(np.absolute(ssm).sum(axis=1).flatten())[0])
 
@@ -100,7 +113,8 @@ def postproc(data, maxclause,maxvar,varvar, graph_pool=False, neg_as_link = True
     batch_size = len(data)
     graph_batch=[d[0] for d in data]
     label_batch = [d[1] for d in data]
-    clause_feat, var_feat, nclause, nvar = get_feat(graph_batch, varvar, maxclause, maxvar)
+    nvars_batch = [d[2] for d in data]
+    clause_feat, var_feat, nclause, nvar = get_feat(graph_batch, nvars_batch, varvar, maxclause, maxvar)
     biggraph = big_tensor_from_batch_graph(graph_batch,varvar,maxclause,maxvar,neg_as_link)
 
     if graph_pool:
@@ -109,4 +123,4 @@ def postproc(data, maxclause,maxvar,varvar, graph_pool=False, neg_as_link = True
         graph_pooler = None
 
 
-    return batch_size, biggraph, clause_feat, var_feat, graph_pooler, label_batch
+    return batch_size, biggraph, clause_feat, var_feat, graph_pooler, label_batch, nvars_batch
