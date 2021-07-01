@@ -74,18 +74,13 @@ def get_indices_values_from_text_clause(nvars, neg_as_link, textclause,varvar,of
 def get_indices_values_from_clause(clause,varvar,neg_as_link, offsetnc):
     indices0=[]
     indices1=[]
-    values=[]
     if not varvar:
         indices0.extend([offsetnc]*(len(clause)))
         indices1.extend(clause)
         if neg_as_link:
-            for v in clause:
-                if int(v)<0:
-                    values.append(-1)
-                else:
-                    values.append(1)
+            values = [-1 if int(v) <0 else 1 for v in clause]
         else:
-            values.extend([1]*len(clause))
+            values = [1]*len(clause)
 
     else:
         for v1 in range(0, len(clause)):
