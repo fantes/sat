@@ -7,7 +7,7 @@ from utils.plotter import VisdomLinePlotter
 from utils.dice import *
 
 
-def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = False, print_inter = 10, test_inter = 1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
+def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = False, output_dim = 1, print_inter = 10, test_inter = 1, num_workers=0, graph_classif = False, device=torch.device("cuda:0")):
     model.to(device)
     model.train()
 
@@ -19,14 +19,20 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
 
     #optimizer = torch.optim.AdamW(model.parameters(),lr = lr, amsgrad=True)
     print("using lr: " + str(lr))
+    print("class weights: " + str(weights))
     optimizer = torch.optim.SGD(model.parameters(),lr=lr)
     # class 0 is much more present then others
-    class_weights = torch.tensor(weights).to(device)
-    #criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    if output_dim == 1:
+        class_weights = torch.tensor([weights[1]]).to(device)
+    else:
+        class_weights = torch.tensor(weights).to(device)
     if dice:
         criterion = DiceLoss1D()
     else:
-        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        if output_dim == 1:
+            criterion = torch.nn.BCEWithLogitsLoss(pos_weight = class_weights)
+        else:
+            criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
     pi = int(print_inter/batch_size)
 
@@ -38,7 +44,7 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
         for i_batch, sample_batched in enumerate(train_dl):
             batch_size, biggraph, clause_feat, var_feat, graph_pooler, labels, nvars = sample_batched
             target = convert_labels(labels, dataset.neg_as_link, dataset.maxvar, device)
-            # print("train labels: " +str(labels))
+            print("train labels: " +str(labels))
             # print("train target: " +str(target))
 
             biggraph = biggraph.to(device)
@@ -53,11 +59,33 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
             # res is batchsize x num_var|clauses x 3
             # target should be batchsize x num_var  (each cell contains target class)
             #print(res)
-            #print("train res: " + str(torch.transpose(res,1,2)))
-            pred= torch.argmax(res,dim=2)
-            # print("train pred: " + str(pred))
+            if output_dim > 1:
+                # print("train res: " + str(torch.transpose(res,1,2)))
+                pred= torch.argmax(res,dim=2)
+                print("train pred: " + str(pred))
+            else:
+                # print("train res: " + str(torch.squeeze(torch.sigmoid(res),dim=2)))
+                pred = torch.squeeze(torch.sigmoid(res),dim=2)
 
-            loss = criterion(torch.transpose(res,1,2), target)
+            train_pred_labels = []
+            for i in range(pred.shape[0]):
+                tpl = []
+                p = pred[i, :]
+                for i,r in enumerate(p):
+
+                    if (output_dim > 1 and r.item() == 1) or (output_dim == 1 and r.item() >= 0.5):
+                        if i >= dataset.maxvar: # neg case
+                            tpl.append(-(i-dataset.maxvar+1))
+                        else:
+                            tpl.append(i+1)
+                train_pred_labels.append(tpl)
+            print("train pred labels: " + str(train_pred_labels))
+
+            if output_dim == 1:
+                target=target.to(torch.float32)
+                loss = criterion(torch.squeeze(res,dim=2), target)
+            else:
+                loss = criterion(torch.transpose(res,1,2), target)
             loss.backward()
             optimizer.step()
 
@@ -86,10 +114,16 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
                 clause_feat = clause_feat.to(device)
                 var_feat = var_feat.to(device)
                 out = model.forward(batch_size, biggraph, clause_feat, var_feat, None)
-                res = torch.argmax(out,dim=2)
+                if output_dim == 1:
+                    res = torch.sigmoid(out)
+                    res = torch.squeeze(res, dim=2)
+                else:
+                    res = torch.argmax(out,dim=2)
+
+#                print("res shape: "  + str(res.shape))
 
                 for bi in range(len(labels)):
-                    # print("test labels: " + str(labels[bi]))
+                    print("test labels: " + str(labels[bi]))
                     # print("test target: " + str(target[bi]))
                     # print("test res: " + str(res[bi]))
                     preds = []
@@ -101,12 +135,12 @@ def train(model,dataset,test_split, max_epoch, lr = 0.01, batch_size=1, dice = F
                                 preds.append(i+1)
                     else:
                         for i,r in enumerate(res[bi]):
-                            if r.item() == 1:
+                            if (output_dim == 1 and r.item() >= 0.5) or (output_dim > 1 and r.item() == 1):
                                 if i >= dataset.maxvar: # neg case
                                     preds.append(-(i-dataset.maxvar+1))
                                 else:
                                     preds.append(i+1)
-                    # print("preds: " + str(preds))
+                    print("test preds: " + str(preds))
                     tp = 0
                     tp_nophase = 0
                     for p in labels[bi]:
@@ -168,7 +202,7 @@ def main():
                         help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
     parser.add_argument('--hidden_dim', type=int, default=8,
                         help='number of hidden units (default: 8)')
-    parser.add_argument('--output_dim', type=int, default=2,
+    parser.add_argument('--output_dim', type=int, default=1,
                         help='output dimension (default: 3 , for true/false/not in clause)')
     parser.add_argument('--final_dropout', type=float, default=0.5,
                         help='final layer dropout for graph embedding (default: 0.5)')
@@ -217,7 +251,7 @@ def main():
     model.to(torch.device("cuda:0"))
 
 
-    train(model, tds, args.test_split,  args.epoch, args.lr, args.batch_size, args.dice)
+    train(model, tds, args.test_split,  args.epoch, args.lr, args.batch_size, args.dice, args.output_dim)
 
 
 if __name__ == '__main__':

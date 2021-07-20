@@ -210,11 +210,12 @@ class GraphDataset(torch.utils.data.Dataset):
         anl = self.totalNLabels/sum(self.nsamples)
         print("average number of labels: " + str(anl))
         print("average number of vars: " + str((sum(self.nvar)/len(self.nvar))))
-        zero_weight = anl/(sum(self.nvar)/len(self.nvar))
+        pos_weight = ((sum(self.nvar)/len(self.nvar))-anl)/anl
+        neg_weight = 1.0
         if self.neg_as_link:
-            weights = [zero_weight*3,(1-zero_weight)/2*3,(1-zero_weight)/2*3]
+            weights = [neg_weight*3,(1-neg_weight)/2*3,(1-neg_weight)/2*3]
         else:
-            weights = [zero_weight,(1-zero_weight)]
+            weights = [neg_weight,pos_weight]
         return train_loader, test_loader, weights
 
 
